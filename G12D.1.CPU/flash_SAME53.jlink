@@ -1,0 +1,6 @@
+SWDSelect
+speed 2000
+r
+exec device = ATSAME54P20
+loadbin obj\G12D.1.CPU.bin,0x0000
+exit
