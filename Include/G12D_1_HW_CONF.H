@@ -121,14 +121,16 @@
 
 	// ++++++++++++++	DMA	0...31	++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-	#define	B_DMACH_NUM			0
-	#define	M_DMACH_NUM			1
-	#define	UART0_DMACH_NUM		2
-	#define	I2C_DMACH_NUM		3
-	#define	SPI_DMA_TX_CH		4
-	#define	SPI_DMA_RX_CH		5
-	#define	ADXL_DMA_TX_CH		6
-	#define	ADXL_DMA_RX_CH		7
+	#define	HF1_DMACH_NUM		0
+	#define	HF2_DMACH_NUM		1
+	#define	HFR_DMACH_NUM		2
+	#define	LF_DMACH_NUM		3
+	#define	UART0_DMACH_NUM		4
+	#define	I2C_DMACH_NUM		5
+	#define	SPI_DMA_TX_CH		6
+	#define	SPI_DMA_RX_CH		7
+//	#define	ADXL_DMA_TX_CH		8
+//	#define	ADXL_DMA_RX_CH		9
 	//#define	ADC_DMA					30
 	//#define	CRC_DMA					31
 
@@ -145,7 +147,7 @@
 
 	// ++++++++++++++	TC	++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-	#define	WIN_TC				TC0
+	//#define	WIN_TC				TC0
 	//#define					TC1
 	//#define					TC2
 	//#define					TC3
@@ -184,10 +186,10 @@
 	// ++++++++++++++	TCC	++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-	//#define					TCC0
-	#define GEN_TCC				TCC1
-	#define B_TCC				TCC2
-	#define M_TCC				TCC3
+	#define	ADC_TCC			TCC0
+	//#define GEN_TCC			TCC1
+	//#define B_TCC				TCC2
+	//#define M_TCC				TCC3
 	//#define					TCC4
 
 	#define GEN_TCC0_TCC1		GEN_MCK
@@ -254,24 +256,26 @@
 
 	// ++++++++++++++	ADC		++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-	#define FBPOW1_ADC			ADC0
-	#define FBPOW1_AIN			0
+	#define PIO_ADCSCLK			HW::PIOC
+	#define PIO_ADCMOSI			HW::PIOC
+	#define PIO_ADCMISO			HW::PIOC
+	#define PIO_ADCFS			HW::PIOC
 
-	#define PIO_FBPOW1			HW::PIOA	//ADC1_AIN[8]
+	#define PIN_ADCSCLK			5
+	#define PIN_ADCMOSI			4 
+	#define PIN_ADCMISO			7 
+	#define PIN_ADCFS			6 
 
-	#define PIN_FBPOW1			2
+	#define ADCSCLK				(1<<PIN_ADCSCLK	) 
+	#define ADCMOSI				(1<<PIN_ADCMOSI	) 
+	#define ADCMISO				(1<<PIN_ADCMISO	) 
+	#define ADCFS				(1<<PIN_ADCFS	) 
 
-	#define FBPOW1				(1UL<<PIN_FBPOW1	) 
-
-
-	#define FBPOW2_ADC			ADC1
-	#define FBPOW2_AIN			8
-
-	#define PIO_FBPOW2			HW::PIOB	//ADC1_AIN[8]
-
-	#define PIN_FBPOW2			6
-
-	#define FBPOW2				(1UL<<PIN_FBPOW2	) 
+	#define ADC_PMUX_SCLK		PORT_PMUX_C 
+	#define ADC_PMUX_MOSI		PORT_PMUX_C 
+	#define ADC_PMUX_MISO		PORT_PMUX_C 
+	#define ADC_DIPO_BITS		SPI_DIPO(3)
+	#define ADC_DOPO_BITS		SPI_DOPO(0) 
 
 	// ++++++++++++++	FBHV		++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -281,9 +285,6 @@
 
 	// ++++++++++++++ AD5312 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 	
-	#define AD5312_CHANNEL_LEVEL_B		0
-	#define AD5312_CHANNEL_LEVEL_M		1
-
 	#define PIO_SCLK			HW::PIOB
 	#define PIO_MOSI			HW::PIOB
 	#define PIO_SYNC			HW::PIOA

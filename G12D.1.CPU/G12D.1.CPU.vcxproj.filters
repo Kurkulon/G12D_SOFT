@@ -23,6 +23,9 @@
     <ClInclude Include="..\Include\G12D_1_HW_CONF.H">
       <Filter>Global Include</Filter>
     </ClInclude>
+    <ClInclude Include="cpp\req.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="makeobj" />

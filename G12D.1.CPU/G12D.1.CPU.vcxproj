@@ -78,6 +78,7 @@
     <ClInclude Include="..\Include\G12D_1_HW_CONF.H" />
     <ClInclude Include="cpp\hardware.h" />
     <ClInclude Include="cpp\hw_com.h" />
+    <ClInclude Include="cpp\req.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />

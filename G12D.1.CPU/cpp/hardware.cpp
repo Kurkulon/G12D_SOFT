@@ -1,10 +1,8 @@
 #include "hardware.h"
-#include "types.h"
-#include "core.h"
-#include "time.h"
 #include "CRC\CRC16_8005.h"
 #include "list.h"
 #include "PointerCRC.h"
+#include "req.h"
 
 #include "SEGGER_RTT\SEGGER_RTT.h"
 //#include "hw_rtm.h"
@@ -13,6 +11,7 @@
 //#include "MANCH\manch.h"
 //#include <math.h>
 #include "spi.h"
+#include <MEM\mem.h>
 
 //#define WIN_TEST
 
@@ -27,12 +26,12 @@
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u32 ADXL_CS_MASK[] = { ADXL_CS };
+//static u32 ADXL_CS_MASK[] = { ADXL_CS };
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-S_SPIM	spiadxl(ADXL_SERCOM_NUM, PIO_ADXLSPCK, PIO_ADXLMOSI, PIO_ADXLMISO, PIO_ADXL_CS, ADXLSPCK, ADXLMOSI, ADXLMISO, ADXL_PMUX_SPCK, ADXL_PMUX_MOSI, ADXL_PMUX_MISO, ADXL_CS_MASK, ArraySize(ADXL_CS_MASK), 
-	ADXL_DIPO_BITS, ADXL_DOPO_BITS, ADXL_GEN_SRC, ADXL_GEN_CLK, ADXL_DMA_TX_CH, ADXL_DMA_RX_CH);
+//S_SPIM	spiadxl(ADXL_SERCOM_NUM, PIO_ADXLSPCK, PIO_ADXLMOSI, PIO_ADXLMISO, PIO_ADXL_CS, ADXLSPCK, ADXLMOSI, ADXLMISO, ADXL_PMUX_SPCK, ADXL_PMUX_MOSI, ADXL_PMUX_MISO, ADXL_CS_MASK, ArraySize(ADXL_CS_MASK), 
+//	ADXL_DIPO_BITS, ADXL_DOPO_BITS, ADXL_GEN_SRC, ADXL_GEN_CLK, ADXL_DMA_TX_CH, ADXL_DMA_RX_CH);
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -117,213 +116,73 @@ static void WDT_Init()
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-#ifdef GEN_TCC
+#ifdef ADC_TCC
 
-	#define genTCC						HW::GEN_TCC
-	#define GENTCC_GEN					CONCAT2(GEN_,GEN_TCC)
-	#define GENTCC_GEN_CLK				CONCAT2(CLK_,GEN_TCC) 
-	#define GENTCC_IRQ					CONCAT2(GEN_TCC,_0_IRQ)
-	#define GCLK_GENTCC					CONCAT2(GCLK_,GEN_TCC)
-	#define PID_GENTCC					CONCAT2(PID_,GEN_TCC)
+	#define adcTCC						HW::ADC_TCC
+	#define ADCTCC_GEN					CONCAT2(GEN_,ADC_TCC)
+	#define ADCTCC_GEN_CLK				CONCAT2(CLK_,ADC_TCC) 
+	#define ADCTCC_IRQ					CONCAT2(ADC_TCC,_0_IRQ)
+	#define GCLK_ADCTCC					CONCAT2(GCLK_,ADC_TCC)
+	#define PID_ADCTCC					CONCAT2(PID_,ADC_TCC)
 
-	#if (GENTCC_GEN_CLK > 100000000)
-			#define GENTCC_PRESC_NUM	64
-	#elif (GENTCC_GEN_CLK > 50000000)
-			#define GENTCC_PRESC_NUM	16
-	#elif (GENTCC_GEN_CLK > 20000000)
-			#define GENTCC_PRESC_NUM	16
-	#elif (GENTCC_GEN_CLK > 10000000)
-			#define GENTCC_PRESC_NUM	8
-	#elif (GENTCC_GEN_CLK > 5000000)
-			#define GENTCC_PRESC_NUM	4
+	#if (ADCTCC_GEN_CLK > 100000000)
+			#define ADCTCC_PRESC_NUM	1
+	#elif (ADCTCC_GEN_CLK > 50000000)
+			#define ADCTCC_PRESC_NUM	1
+	#elif (ADCTCC_GEN_CLK > 20000000)
+			#define ADCTCC_PRESC_NUM	1
+	#elif (ADCTCC_GEN_CLK > 10000000)
+			#define ADCTCC_PRESC_NUM	1
+	#elif (ADCTCC_GEN_CLK > 5000000)
+			#define ADCTCC_PRESC_NUM	1
 	#else
-			#define GENTCC_PRESC_NUM	4
+			#define ADCTCC_PRESC_NUM	1
 	#endif
 
-	#define GENTCC_PRESC_DIV			CONCAT2(TCC_PRESCALER_DIV,GENTCC_PRESC_NUM)
-	#define US2GENTCC(v)				(((v)*(GENTCC_GEN_CLK/GENTCC_PRESC_NUM/1000)+500)/1000)
+	#define ADCTCC_PRESC_DIV			CONCAT2(TCC_PRESCALER_DIV,ADCTCC_PRESC_NUM)
+	#define US2ADCTCC(v)				(((v)*(ADCTCC_GEN_CLK/ADCTCC_PRESC_NUM/1000)+500)/1000)
 
 	//#define GENTCC_EVSYS_USER			CONCAT3(EVSYS_USER_, GEN_TCC, _EV_0)
-	#define GENTCC_EVENT_GEN			CONCAT3(EVGEN_, GEN_TCC, _OVF)
-	#define GENTCC_EVSYS_CHANNEL		(GENTCC_EVENT_GEN|EVSYS_PATH_ASYNCHRONOUS|EVSYS_EDGSEL_RISING_EDGE)
+	#define ADCTCC_EVENT_GEN			CONCAT3(EVGEN_, ADC_TCC, _OVF)
+	#define ADCTCC_EVSYS_CHANNEL		(GENTCC_EVENT_GEN|EVSYS_PATH_ASYNCHRONOUS|EVSYS_EDGSEL_RISING_EDGE)
 
-	#define GENTCC_DMCH_TRIGSRC			CONCAT3(DMCH_TRIGSRC_, GEN_TCC, _OVF)
+	#define ADCTCC_DMCH_TRIGSRC1		CONCAT3(DMCH_TRIGSRC_, ADC_TCC, _MC0)
+	#define ADCTCC_DMCH_TRIGSRC2		CONCAT3(DMCH_TRIGSRC_, ADC_TCC, _MC1)
 
-	inline void GENTCC_ClockEnable()	{ HW::GCLK->PCHCTRL[GCLK_GENTCC] = GENTCC_GEN|GCLK_CHEN; HW::MCLK->ClockEnable(PID_GENTCC); }
-
-#else
-	#error  Must defined GEN_TCC
-#endif
-
-
-//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// GENTCC_OVF ->	WINTC_EVU(RETRIGER)
-// 					BTCC_EV1(RETRIGER)
-//					MTCC_EV1(RETRIGER)
-// 
-// DNNKB_EXTINT ->	DNNKB_EVSYS_CHANNEL -> BTCC0_EVSYS_USER(BTCC_EV_0)
-// DNNKM_EXTINT ->	DNNKM_EVSYS_CHANNEL -> MTCC0_EVSYS_USER(MTCC_EV_0)
-// 
-// WINTC_OVF ->		BTCC_MC0 EVGEN_MC_0 -> bDMA(DMCH_TRIGSRC_MC0) -> DMCH_TCMPL B_DMA_IRQ(Win_DMA_IRQ)
-//					MTCC_MC0 EVGEN_MC_0 -> mDMA(DMCH_TRIGSRC_MC0) -> DMCH_TCMPL M_DMA_IRQ(Win_DMA_IRQ)
-
-#ifdef B_TCC
-
-	#define BTCC						HW::B_TCC
-	#define BTCC_GEN					CONCAT2(GEN_,B_TCC)
-	#define BTCC_GEN_CLK				CONCAT2(CLK_,B_TCC) 
-	#define BTCC_IRQ					CONCAT2(B_TCC,_0_IRQ)
-	#define GCLK_BTCC					CONCAT2(GCLK_,B_TCC)
-	#define PID_BTCC					CONCAT2(PID_,B_TCC)
-
-	#if (BTCC_GEN_CLK > 100000000)
-			#define BTCC_PRESC_NUM	1
-	#elif (BTCC_GEN_CLK > 50000000)
-			#define BTCC_PRESC_NUM	1
-	#elif (BTCC_GEN_CLK > 20000000)
-			#define BTCC_PRESC_NUM	1
-	#elif (BTCC_GEN_CLK > 10000000)
-			#define BTCC_PRESC_NUM	1
-	#elif (BTCC_GEN_CLK > 5000000)
-			#define BTCC_PRESC_NUM	1
-	#else
-			#define BTCC_PRESC_NUM	1
-	#endif
-
-	#define BTCC_PRESC_DIV			CONCAT2(TCC_PRESCALER_DIV,BTCC_PRESC_NUM)
-	#define US2BTCC(v)				(((v)*(BTCC_GEN_CLK/BTCC_PRESC_NUM)+500000)/1000000)
-
-	//#define BTCC_EVENT_GEN		CONCAT3(EVGEN_, B_TCC, _MC_0)
-	#define BTCC_COUNT_EVSYS_USER	CONCAT3(EVSYS_USER_, B_TCC, _EV_0)
-	#define BTCC_RETRG_EVSYS_USER	CONCAT3(EVSYS_USER_, B_TCC, _EV_1)
-	#define BTCC_CAPTR_EVSYS_USER	CONCAT3(EVSYS_USER_, B_TCC, _MC_0)
-
-	#define BTCC_DMCH_TRIGSRC		CONCAT3(DMCH_TRIGSRC_, B_TCC, _MC0) 
-
-	inline void BTCC_ClockEnable()	{ HW::GCLK->PCHCTRL[GCLK_BTCC] = BTCC_GEN|GCLK_CHEN; HW::MCLK->ClockEnable(PID_BTCC); }
+	inline void ADCTCC_ClockEnable()	{ HW::GCLK->PCHCTRL[GCLK_ADCTCC] = ADCTCC_GEN|GCLK_CHEN; HW::MCLK->ClockEnable(PID_ADCTCC); }
 
 #else
-	#error  Must defined B_TCC
-#endif
-
-
-//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// GENTCC_OVF ->	WINTC_EVU(RETRIGER)
-// 					BTCC_EV1(RETRIGER)
-//					MTCC_EV1(RETRIGER)
-// 
-// DNNKB_EXTINT ->	DNNKB_EVSYS_CHANNEL -> BTCC0_EVSYS_USER(BTCC_EV_0)
-// DNNKM_EXTINT ->	DNNKM_EVSYS_CHANNEL -> MTCC0_EVSYS_USER(MTCC_EV_0)
-// 
-// WINTC_OVF ->		BTCC_MC0 EVGEN_MC_0 -> bDMA(DMCH_TRIGSRC_MC0) -> DMCH_TCMPL B_DMA_IRQ(Win_DMA_IRQ)
-//					MTCC_MC0 EVGEN_MC_0 -> mDMA(DMCH_TRIGSRC_MC0) -> DMCH_TCMPL M_DMA_IRQ(Win_DMA_IRQ)
-
-#ifdef M_TCC
-
-	#define MTCC						HW::M_TCC
-	#define MTCC_GEN					CONCAT2(GEN_,M_TCC)
-	#define MTCC_GEN_CLK				CONCAT2(CLK_,M_TCC) 
-	#define MTCC_IRQ					CONCAT2(M_TCC,_0_IRQ)
-	#define GCLK_MTCC					CONCAT2(GCLK_,M_TCC)
-	#define PID_MTCC					CONCAT2(PID_,M_TCC)
-
-	#if (MTCC_GEN_CLK > 100000000)
-			#define MTCC_PRESC_NUM	1
-	#elif (MTCC_GEN_CLK > 50000000)
-			#define MTCC_PRESC_NUM	1
-	#elif (MTCC_GEN_CLK > 20000000)
-			#define MTCC_PRESC_NUM	1
-	#elif (MTCC_GEN_CLK > 10000000)
-			#define MTCC_PRESC_NUM	1
-	#elif (MTCC_GEN_CLK > 5000000)
-			#define MTCC_PRESC_NUM	1
-	#else
-			#define MTCC_PRESC_NUM	1
-	#endif
-
-	#define MTCC_PRESC_DIV			CONCAT2(TCC_PRESCALER_DIV,MTCC_PRESC_NUM)
-	#define US2MTCC(v)				(((v)*(MTCC_GEN_CLK/MTCC_PRESC_NUM)+500000)/1000000)
-
-	//#define MTCC_EVENT_GEN			CONCAT3(EVGEN_, M_TCC, _MC_0)
-	#define MTCC_COUNT_EVSYS_USER	CONCAT3(EVSYS_USER_, M_TCC, _EV_0)
-	#define MTCC_RETRG_EVSYS_USER	CONCAT3(EVSYS_USER_, M_TCC, _EV_1)
-	#define MTCC_CAPTR_EVSYS_USER	CONCAT3(EVSYS_USER_, M_TCC, _MC_0)
-
-	#define MTCC_DMCH_TRIGSRC		CONCAT3(DMCH_TRIGSRC_, M_TCC, _MC0) 
-
-	inline void MTCC_ClockEnable()	{ HW::GCLK->PCHCTRL[GCLK_MTCC] = MTCC_GEN|GCLK_CHEN; HW::MCLK->ClockEnable(PID_MTCC); }
-
-#else
-	#error  Must defined M_TCC
+	#error  Must defined ADC_TCC
 #endif
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-#ifdef WIN_TC
+#ifdef ADC_SERCOM_NUM
 
-	#define winTC						HW::WIN_TC
-	#define WINTC_GEN					CONCAT2(GEN_,WIN_TC)
-	#define WINTC_GEN_CLK				CONCAT2(CLK_,WIN_TC) 
-	#define WINTC_IRQ					CONCAT2(WIN_TC,_IRQ)
-	#define WINTC_GCLK					CONCAT2(GCLK_,WIN_TC)
-	#define WINTC_PID					CONCAT2(PID_,WIN_TC)
+	#define adcspi						CONCAT2(HW::SPI,ADC_SERCOM_NUM)
+	#define ADCSPI_GEN					GEN_MCK
+	#define ADCSPI_GEN_CLK				GEN_MCK_CLK
+	#define GCLK_ADCSPI					CONCAT3(GCLK_SERCOM,ADC_SERCOM_NUM,_CORE)
+	#define PID_ADCSPI					CONCAT2(PID_SERCOM,ADC_SERCOM_NUM)
+	
+	#define ADCSPI_DMCH_TRIGSRC			CONCAT3(DMCH_TRIGSRC_SERCOM,ADC_SERCOM_NUM,_RX)
 
-	#if (WINTC_GEN_CLK > 100000000)
-			#define WINTC_PRESC_NUM		8
-	#elif (WINTC_GEN_CLK > 50000000)
-			#define WINTC_PRESC_NUM		4
-	#elif (WINTC_GEN_CLK > 20000000)
-			#define WINTC_PRESC_NUM		2
-	#elif (WINTC_GEN_CLK > 10000000)
-			#define WINTC_PRESC_NUM		1
-	#elif (WINTC_GEN_CLK > 5000000)
-			#define WINTC_PRESC_NUM		1
-	#else
-			#define WINTC_PRESC_NUM		1
-	#endif
-
-	#define WINTC_PRESC_DIV				CONCAT2(TC_PRESCALER_DIV,WINTC_PRESC_NUM)
-	#define US2WINTC(v)					(((v)*(WINTC_GEN_CLK/1000/WINTC_PRESC_NUM)+500)/1000)
-
-	#define WINTC_RETRG_EVSYS_USER		CONCAT3(EVSYS_USER_, WIN_TC, _EVU)
-	#define WINTC_EVENT_GEN				CONCAT3(EVGEN_, WIN_TC, _OVF)
-	#define WINTC_EVSYS_CHANNEL			(WINTC_EVENT_GEN|EVSYS_PATH_ASYNCHRONOUS|EVSYS_EDGSEL_RISING_EDGE)
-
-	inline void WINTC_ClockEnable()		{ HW::GCLK->PCHCTRL[WINTC_GCLK] = WINTC_GEN|GCLK_CHEN; HW::MCLK->ClockEnable(WINTC_PID); }
+	inline void ADCSPI_ClockEnable()	{ HW::GCLK->PCHCTRL[GCLK_ADCSPI] = ADCSPI_GEN|GCLK_CHEN; HW::MCLK->ClockEnable(PID_ADCSPI); }
 
 #else
-	#error  Must defined WIN_TC
+	#error  Must defined ADC_SERCOM_NUM
 #endif
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// GENTCC_OVF ->	WINTC_EVU(RETRIGER)
-// 					BTCC_EV1(RETRIGER)
-//					MTCC_EV1(RETRIGER)
-// 
-// DNNKB_EXTINT ->	DNNKB_EVSYS_CHANNEL -> BTCC0_EVSYS_USER(BTCC_EV_0)
-// DNNKM_EXTINT ->	DNNKM_EVSYS_CHANNEL -> MTCC0_EVSYS_USER(MTCC_EV_0)
-// 
-// WINTC_OVF ->		BTCC_MC0 EVGEN_MC_0 -> bDMA(DMCH_TRIGSRC_MC0) -> DMCH_TCMPL B_DMA_IRQ(Win_DMA_IRQ)
-//					MTCC_MC0 EVGEN_MC_0 -> mDMA(DMCH_TRIGSRC_MC0) -> DMCH_TCMPL M_DMA_IRQ(Win_DMA_IRQ)
 
-#define DNNKB_EXTINT				(PIN_DNNKB&15)
-#define DNNKM_EXTINT				(PIN_DNNKM&15)
-
-//#define DNNKB_EVSYS_GEN_EIC_EXTINT	EVGEN_EIC_EXTINT_12
-//#define DNNKM_EVSYS_GEN_EIC_EXTINT	EVGEN_EIC_EXTINT_13
-
-#define WFG_EVSYS_USER				CONCAT3(EVSYS_USER_, WFG_TC, _EVU)
-
-#define DNNKB_EVSYS_CHANNEL			((EVGEN_EIC_EXTINT_0+DNNKB_EXTINT)|EVSYS_PATH_ASYNCHRONOUS|EVSYS_EDGSEL_RISING_EDGE)
-#define DNNKB_EVSYS_USER			(BTCC_COUNT_EVSYS_USER)
-
-#define DNNKM_EVSYS_CHANNEL			((EVGEN_EIC_EXTINT_0+DNNKM_EXTINT)|EVSYS_PATH_ASYNCHRONOUS|EVSYS_EDGSEL_RISING_EDGE)
-#define DNNKM_EVSYS_USER			(MTCC_COUNT_EVSYS_USER)
-
-//#define GEN_DIV						256
-//#define GEN_PRESC					TCC_PRESCALER_DIV256
-//#define WIN_DIV						16
-//#define WIN_PRESC					TC_PRESCALER_DIV16
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -331,37 +190,10 @@ static void WDT_Init()
 //u32 m_ts[256];
 //u32 b_ts[256];
 
-u16 cur_ts_index = 0;
-u16 max_ts_index = 64;
-u16 windowCount = 64;
-u16 windowTime = 64;
-u16 genWorkTimeMinutes = 0;
-u16 genWorkTimeMilliseconds = 0;
-u16 genTimeOut = 0;
-u16 fireCount = 0;
 
-u32 gen_period = US2GENTCC(100000);// 4687;
-u16 gen_freq = 10;
-
-byte saveGenCount = 0;
-
-WINDSC windsc_arr[4];
-
-List<WINDSC>	readyWinList;
-List<WINDSC>	freeWinList;
-
-WINDSC *curWinDsc = 0;
-
-static void SaveGenTime();
-static void PrepareWin();
 
 //u16 temp = 0;
 
-static DMA_CH bDMA(B_DMACH_NUM);
-static DMA_CH mDMA(M_DMACH_NUM);
-
-#define B_DMA_IRQ CONCAT3(DMAC_,B_DMACH_NUM,_IRQ)
-#define M_DMA_IRQ CONCAT3(DMAC_,M_DMACH_NUM,_IRQ)
 
 //static void* eepromData = 0;
 //static u16 eepromWriteLen = 0;
@@ -380,6 +212,19 @@ static DMA_CH mDMA(M_DMACH_NUM);
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+static DMA_CH lfDMA(LF_DMACH_NUM);
+static DMA_CH hfDMA1(HF1_DMACH_NUM);
+static DMA_CH hfDMA2(HF2_DMACH_NUM);
+static DMA_CH hfDMAR(HFR_DMACH_NUM);
+
+bool cmdStartLF = false;
+bool cmdStartHF = false;
+
+ListPtr<MB> readyLF;
+ListPtr<MB> readyHF;
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 i32 tempCPU = 0;
 u16 PTAT = 0;
 u16 CTAT = 0;
@@ -392,73 +237,236 @@ static i16 temp_k4 = 0;
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-void UpdateADC()
+Ptr<MB> GetReadyLF()
+{
+	return readyLF.Get();
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Ptr<MB> GetReadyHF()
+{
+	return readyHF.Get();
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+MB* AllocLFB()
+{
+	MB* mb = AllocMemBuffer(sizeof(Rsp30));
+
+	if (mb != 0)
+	{
+		mb->dataOffset = sizeof(Rsp30::hdr);
+	};
+
+	return mb;
+}
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static Ptr<MB> mb_Update_LF;
+
+static void Update_LF()
+{
+	static byte i = 0;
+
+	Ptr<MB> &mb = mb_Update_LF;
+
+	switch (i)
+	{
+		case 0:
+
+			if (cmdStartLF)
+			{
+				mb = AllocLFB();
+
+				if (mb.Valid())
+				{
+					cmdStartLF = false;
+
+					Rsp30 &rsp = *((Rsp30*)mb->GetDataPtr());
+
+					lfDMA.ReadPeripheral(&HW::ADC0->RESULT, (void*)(rsp.rsp.data-8), ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|DMCH_TRIGSRC_ADC0_RESRDY, DMDSC_BEATSIZE_HWORD|DMDSC_BLOCKACT_NOACT); 
+
+					i++;
+				};
+			};
+
+			break;
+
+		case 1:
+
+			if (lfDMA.CheckComplete())
+			{
+				readyLF.Add(mb);
+
+				mb.Free();
+
+				i = 0;
+			};
+
+			break;
+	};
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static Ptr<MB> mb_Update_HF;
+
+static void Update_HF()
+{
+	static byte i = 0;
+
+	Ptr<MB> &mb = mb_Update_HF;
+
+	switch (i)
+	{
+		case 0:
+
+			if (cmdStartHF)
+			{
+				mb = AllocLFB();
+
+				if (mb.Valid())
+				{
+					register volatile byte t;
+
+					cmdStartHF = false;
+
+					Rsp30 &rsp = *((Rsp30*)mb->GetDataPtr());
+
+					while(adcspi->SYNCBUSY);
+
+					do t = adcspi->DATA; while(adcspi->INTFLAG & SPI_RXC); 
+
+					hfDMA1.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC1, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
+					hfDMA2.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC2, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
+					hfDMAR.ReadPeripheral(&adcspi->DATA, (void*)(rsp.rsp.data-12), sizeof(rsp.rsp.data), DMCH_TRIGACT_BURST|ADCSPI_DMCH_TRIGSRC, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
+
+					adcTCC->WAVE = TCC_WAVEGEN_NPWM;
+					adcTCC->PER = US2ADCTCC(2.5)-1;
+					adcTCC->CC[0] = US2ADCTCC(0.8);
+					adcTCC->CC[1] = US2ADCTCC(1.6);
+
+					adcTCC->INTENCLR = ~0;
+					//adcTCC->INTENSET = TCC_OVF;
+
+					adcTCC->INTFLAG = ~0;
+
+					adcTCC->EVCTRL = TCC_MCEO0|TCC_MCEO1;
+
+					adcTCC->CTRLA = ADCTCC_PRESC_DIV;
+					adcTCC->CTRLA = ADCTCC_PRESC_DIV|TCC_ENABLE;
+
+					adcTCC->CTRLBSET = TCC_CMD_RETRIGGER; 
+
+					i++;
+				};
+			};
+
+			break;
+
+		case 1:
+
+			if (hfDMA1.CheckComplete() && hfDMA2.CheckComplete() && hfDMAR.CheckComplete())
+			{
+				adcTCC->CTRLA = 0; 
+				adcTCC->CTRLA = TCC_SWRST; 
+
+				hfDMA1.Disable();
+				hfDMA2.Disable();
+				hfDMAR.Disable();
+
+				Rsp30 &rsp = *((Rsp30*)mb->GetDataPtr());
+
+				__packed u16 *p = rsp.rsp.data;
+
+				for(u16 n = 0; n < ArraySize(rsp.rsp.data); n++)
+				{
+					p[0] = ReverseWord(p[0]); p++;
+				};
+
+				readyHF.Add(mb);
+
+				mb.Free();
+
+				i = 0;
+			};
+
+			break;
+	};
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static void UpdateADC()
 {
 	static byte i = 0;
 
 	switch (i)
 	{
-	case 0:
+		case 0:
 
-		HW::ADC1->INPUTCTRL = ADC_MUXPOS_PTAT;
-		HW::ADC1->INTFLAG = ~0;
-		HW::ADC1->SWTRIG = ADC_START;
-
-		i++;
-
-		break;
-
-	case 1:
-
-		if (HW::ADC1->INTFLAG & ADC_RESRDY)
-		{
-			PTAT = HW::ADC1->RESULT;
-
-			HW::ADC1->INPUTCTRL = ADC_MUXPOS_CTAT;
+			HW::ADC1->INPUTCTRL = ADC_MUXPOS_PTAT;
 			HW::ADC1->INTFLAG = ~0;
 			HW::ADC1->SWTRIG = ADC_START;
 
 			i++;
-		};
 
-		break;
+			break;
 
-	case 2:
+		case 1:
 
-		if (HW::ADC1->INTFLAG & ADC_RESRDY)
-		{
-			CTAT = HW::ADC1->RESULT;
+			if (HW::ADC1->INTFLAG & ADC_RESRDY)
+			{
+				PTAT = HW::ADC1->RESULT;
 
-			HW::ADC1->INTFLAG = ~0;
+				HW::ADC1->INPUTCTRL = ADC_MUXPOS_CTAT;
+				HW::ADC1->INTFLAG = ~0;
+				HW::ADC1->SWTRIG = ADC_START;
 
-			u16 TP	= PTAT;
-			u16 TC	= CTAT;
+				i++;
+			};
 
-			i32 a = SMUL64(temp_k1,TC)>>8;
-			i32 b = SMUL64(temp_k2,TP)>>8;
-			i32 c = (temp_k3*TP - temp_k4*TC)/256;
+			break;
 
-			if (c != 0) tempCPU = ((a-b)+c/2)/c;
+		case 2:
 
-			HW::ADC1->INPUTCTRL = ADC_MUXPOS_SCALEDCOREVCC;
-			HW::ADC1->INTFLAG = ~0;
-			HW::ADC1->SWTRIG = ADC_START;
+			if (HW::ADC1->INTFLAG & ADC_RESRDY)
+			{
+				CTAT = HW::ADC1->RESULT;
 
-			i++;
-		};
+				HW::ADC1->INTFLAG = ~0;
 
-		break;
+				u16 TP	= PTAT;
+				u16 TC	= CTAT;
 
-	case 3:
+				i32 a = SMUL64(temp_k1,TC)>>8;
+				i32 b = SMUL64(temp_k2,TP)>>8;
+				i32 c = (temp_k3*TP - temp_k4*TC)/256;
 
-		if (HW::ADC1->INTFLAG & ADC_RESRDY)
-		{
-			u16 res = HW::ADC1->RESULT;
+				if (c != 0) tempCPU = ((a-b)+c/2)/c;
 
-			coreVCC = (4125*res+1024)>>11;
+				HW::ADC1->INPUTCTRL = ADC_MUXPOS_SCALEDCOREVCC;
+				HW::ADC1->INTFLAG = ~0;
+				HW::ADC1->SWTRIG = ADC_START;
 
-			i = 0;
-		};
+				i++;
+			};
+
+			break;
+
+		case 3:
+
+			if (HW::ADC1->INTFLAG & ADC_RESRDY)
+			{
+				u16 res = HW::ADC1->RESULT;
+
+				coreVCC = (4125*res+1024)>>11;
+
+				i = 0;
+			};
 
 	};
 }
@@ -482,7 +490,7 @@ static void Init_ADC()
 	HW::ADC0->REFCTRL	= ADC_REFSEL_VDDANA|ADC_REFCOMP;
 	HW::ADC0->INPUTCTRL	= ADC_MUXPOS_AIN9;
 	HW::ADC0->AVGCTRL	= ADC_SAMPLENUM_16;
-	HW::ADC0->SAMPCTRL	= ADC_SAMPLEN(24);
+	HW::ADC0->SAMPCTRL	= ADC_SAMPLEN(12);
 	HW::ADC0->CTRLA		= ADC_PRESCALER_DIV4|ADC_ENABLE; 
 	HW::ADC0->SWTRIG	= ADC_START;
 
@@ -515,6 +523,70 @@ static void Init_ADC()
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static void Init_ADCHF()
+{
+#ifdef CPU_SAME53
+
+	ADCTCC_ClockEnable();
+
+	HW::PIOA->SetWRCONFIG(PA08,	PORT_PMUX_F | PORT_WRPINCFG | PORT_PMUXEN | PORT_WRPMUX);
+
+	adcTCC->CTRLA = TCC_SWRST;
+
+	while(adcTCC->SYNCBUSY);
+
+	//adcTCC->WAVE = TCC_WAVEGEN_NPWM;
+	//adcTCC->PER = US2ADCTCC(2.5)-1;
+	//adcTCC->CC[0] = US2ADCTCC(0.8);
+	//adcTCC->CC[1] = US2ADCTCC(1.6);
+
+	//adcTCC->INTENCLR = ~0;
+	////adcTCC->INTENSET = TCC_OVF;
+
+	//adcTCC->INTFLAG = ~0;
+
+	//adcTCC->EVCTRL = TCC_MCEO0|TCC_MCEO1;
+
+	//adcTCC->CTRLA = ADCTCC_PRESC_DIV;
+	//adcTCC->CTRLA = ADCTCC_PRESC_DIV|TCC_ENABLE;
+
+	//adcTCC->CTRLBSET = TCC_CMD_STOP; 
+
+	ADCSPI_ClockEnable();
+
+	PIO_ADCSCLK->SetWRCONFIG(ADCSCLK, ADC_PMUX_SCLK|PORT_WRPINCFG|PORT_PMUXEN|PORT_WRPMUX);
+	PIO_ADCMISO->SetWRCONFIG(ADCMISO, ADC_PMUX_MISO|PORT_WRPINCFG|PORT_PMUXEN|PORT_WRPMUX);
+	//ADCFS->DIRSET = _MASK_CS_ALL; 
+
+	PIO_ADCMOSI->SetWRCONFIG(ADCMOSI, PORT_WRPINCFG|PORT_WRPMUX);
+	PIO_ADCMOSI->DIRSET	= ADCMOSI;
+	PIO_ADCMOSI->SET(ADCMOSI);
+
+	adcspi->CTRLA = SPI_SWRST;
+
+	while(adcspi->SYNCBUSY);
+
+	adcspi->CTRLA = SERCOM_MODE_SPI_MASTER;
+
+	adcspi->CTRLA = SERCOM_MODE_SPI_MASTER|ADC_DIPO_BITS|ADC_DOPO_BITS;
+	adcspi->CTRLB = SPI_RXEN;
+	adcspi->CTRLC = SPI_ICSPACE(0);
+	adcspi->BAUD = NS2CLK(50)/2-1;
+
+	adcspi->DBGCTRL = 1;
+
+	adcspi->CTRLA |= SPI_ENABLE;
+
+	while(adcspi->SYNCBUSY);
+
+	adcspi->STATUS = ~0;
+
+
+#endif
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 void InitHardware()
@@ -527,11 +599,11 @@ void InitHardware()
 
 	//	HW::PIOA->BSET(13);
 
-	HW::GCLK->GENCTRL[GEN_32K]		= GCLK_DIV(1)	|GCLK_SRC_OSCULP32K	|GCLK_GENEN;
+	HW::GCLK->GENCTRL[GEN_32K]		= GCLK_DIV(1)			| GCLK_SRC_OSCULP32K	| GCLK_GENEN;
 
-	HW::GCLK->GENCTRL[GEN_1M]		= GCLK_DIV(CLKIN_MHz)	|GCLK_SRC_XOSC0		|GCLK_GENEN		|GCLK_OE;
+	HW::GCLK->GENCTRL[GEN_1M]		= GCLK_DIV(CLKIN_MHz)	| CLKIN_XOSC_NUM		| GCLK_GENEN	| GCLK_OE;
 
-	HW::GCLK->GENCTRL[GEN_16M]		= GCLK_DIV(1)	|GCLK_SRC_XOSC0		|GCLK_GENEN;
+	HW::GCLK->GENCTRL[GEN_16M]		= GCLK_DIV(1)			| CLKIN_XOSC_NUM		| GCLK_GENEN;
 
 	//	HW::GCLK->GENCTRL[GEN_500K] 	= GCLK_DIV(50)	|GCLK_SRC_XOSC1		|GCLK_GENEN;
 
@@ -555,6 +627,7 @@ void InitHardware()
 	I2C_Init();
 
 	Init_ADC();
+	Init_ADCHF();
 
 	WDT_Init();
 
@@ -577,6 +650,8 @@ void UpdateHardware()
 	{
 		CALL( I2C_Update();		);
 		CALL( UpdateADC();		);
+		CALL( Update_LF();		);
+		CALL( Update_HF();		);
 	};
 
 	i = (i > (__LINE__-S-3)) ? 0 : i;

@@ -11,8 +11,10 @@
 //#include "G_TRM.h"
 #include "TaskList.h"
 #include "FLASH\nand_ecc.h"
-#include "MQCODER\mqcoder.h"
+//#include "MQCODER\mqcoder.h"
 #include <string.h>
+#include "req.h"
+#include <MEM\mem.h>
 
 //#include "G_TRM.H"
 
@@ -55,29 +57,13 @@ u32 fps;
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-struct ManMsg 
-{
-	enum { VER = 1 };
-
-	struct Header
-	{
-		byte ver;
-		byte magic;
-		u16 dataLen;
-		u16 dataCRC;
-		u16 crc;
-	} 
-	hdr;
-
-	u16 data[16];
-};
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 static ManMsg manRcvData;
 static u16 manTrmDtaa[4096];
-static u16 manPckData[128 + WINDOW_SIZE*4 + 16];
-static u16 manUnpData[128 + WINDOW_SIZE*4 + 16];
+//static u16 manPckData[128 + WINDOW_SIZE*4 + 16];
+//static u16 manUnpData[128 + WINDOW_SIZE*4 + 16];
 static u16 manTrmBaud = 0;
 static u16 tlsTrmBaud = 0;
 
@@ -85,6 +71,10 @@ static const u16 manReqWord = 0x0600;
 static const u16 manReqMask = 0xFF00;
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static Ptr<MB> rsp30;
+static Ptr<MB> rsp40;
+static bool cmdStartADC = false;
 
 //u16 txbuf[128 + 512 + 16];
 
@@ -97,23 +87,12 @@ static bool numDevValid = false;
 
 i16 temp = 0;
 
-u32 m_ts[WINDOW_SIZE];
-u32 b_ts[WINDOW_SIZE];
 
 static byte svCount = 0;
 
 //static Rsp72 *curRsp72 = 0;
 
-u16 fireAmp = 0;
-u16 fireFreq = 3000;
 
-i16 loc = 0;
-i16 loc_min = 0x7FFF;
-i16 loc_max = 0x8000;
-u32 loc_gk = 0;
-i16 loc_tension = 0;
-u32 loc_period = 0;
-u16 loc_req_count = 0;
 u16 framErrorMask = 0;
 
 i16 ax = 0, ay = 0, az = 0, at = 0;
@@ -130,10 +109,11 @@ void SaveMainParams()
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_00(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_00(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len == 0 || len > 1 || out == 0) return 0;
+	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
+	__packed u16 *out = (*msg)->data;
 	__packed u16 *start = out;
 
 	*(out++)	= (manReqWord & manReqMask) | 0;		//	1. ответное слово
@@ -145,10 +125,11 @@ static u16 RequestMan_00(u16 *data, u16 len, u16 *out)
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_10(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_10(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len == 0 || len > 1 || out == 0) return 0;
+	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
+	__packed u16 *out = (*msg)->data;
 	__packed u16 *start = out;
 
 	*(out++)	= (manReqWord & manReqMask) | 0x10;		//	1. ответное слово
@@ -164,10 +145,15 @@ static u16 RequestMan_10(u16 *data, u16 len, u16 *out)
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_20(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_20(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len == 0 || len > 1 || out == 0) return 0;
+	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
+	cmdStartADC = true;
+	rsp30.Free();
+	rsp40.Free();
+
+	__packed u16 *out = (*msg)->data;
 	__packed u16 *start = out;
 
 	*(out++)	= data[0];		//	1. ответное слово
@@ -177,53 +163,49 @@ static u16 RequestMan_20(u16 *data, u16 len, u16 *out)
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_30(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_30(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len == 0 || len > 1 || out == 0) return 0;
+	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
+	rsp30 = GetReadyHF();
+	rsp40 = GetReadyLF();
+
+	if (!rsp30.Valid())
+	{
+		__packed u16 *out = (*msg)->data;
+		out[0] = data[0];
+		return 1;
+	};
+
+	Rsp30 *rsp = (Rsp30*)((byte*)(rsp30->GetDataPtr())-sizeof(Rsp30::hdr));
+	*msg = (ManMsg*)rsp;
+
+	__packed u16 *out = (*msg)->data;
 	__packed u16 *start = out;
 
-	*(out++)	= data[0];		//	1. ответное слово
-	*(out++)	= 0;			//	2. усиление
-	*(out++)	= 0;			//	3. шаг, мкс			
-	*(out++)	= 0;			//	4. длина, отсч						
-	*(out++)	= 0;			//	5. фильтр	   
-	*(out++)	= 16;			//	6. количество окон спектра (ushort)
-	*(out++)	= 0;			//	7..8. Коэффициент разбиения (float)
-	*(out++)	= 0;
-	*(out++)	= 0;			//	9. процент перекрытия окон (ushort)(%)
-	*(out++)	= 0;
+	rsp->rsp.rw			= data[0];		
+	rsp->rsp.amp 		= 1;		
+	rsp->rsp.step		= 100;		
+	rsp->rsp.size		= 1;		
+	rsp->rsp.filtr		= 0;		
+	rsp->rsp.channels	= 512;			
+	rsp->rsp.spectPart	= 1;		
+	rsp->rsp.spectStep	= 1;		
+	rsp->rsp.overlapp	= 50;		
+	rsp->rsp.ampMax		= 1;		
+	rsp->rsp.ampMid		= 1;		
+	rsp->rsp.uTemp		= temp;		
 
-	*(out++)	= 0;			//	10. максимальная амплитуда волнового пакета(ushort)
-	*(out++)	= 0;			//	11. энергия волнового пакета(ushort)
-	*(out++)	= 0;
-	*(out++)	= temp;			//	12. температура (ushort)(у.е)
-	*(out++)	= 0;			//	13-?. данные (до 1024шт)
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-	*(out++)	= 0;
-
-	return out - start;
+	return (sizeof(rsp->rsp) - sizeof(rsp->rsp.data)) / 2 + rsp->rsp.channels;
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_40(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_40(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len == 0 || len > 1 || out == 0) return 0;
+	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
+	__packed u16 *out = (*msg)->data;
 	__packed u16 *start = out;
 
 	*(out++)	= data[0];		//	1. ответное слово
@@ -233,9 +215,9 @@ static u16 RequestMan_40(u16 *data, u16 len, u16 *out)
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_80(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_80(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len < 3 || len > 3 || out == 0) return 0;
+	if (len < 3 || len > 3 || msg == 0 || *msg == 0) return 0;
 
 	switch (data[1])
 	{
@@ -252,16 +234,16 @@ static u16 RequestMan_80(u16 *data, u16 len, u16 *out)
 			break;
 	};
 
-	out[0] = (manReqWord & manReqMask) | 0x80;
+	(*msg)->data[0] = (manReqWord & manReqMask) | 0x80;
 
 	return 1;
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_90(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_90(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len < 3 || len > 3 || out == 0) return 0;
+	if (len < 3 || len > 3 || msg == 0 || *msg == 0) return 0;
 
 	switch(data[1])
 	{
@@ -277,33 +259,33 @@ static u16 RequestMan_90(u16 *data, u16 len, u16 *out)
 			return false;
 	};
 
-	out[0] = (manReqWord & manReqMask) | 0x90;
+	(*msg)->data[0] = (manReqWord & manReqMask) | 0x90;
 
 	return 1;
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan_F0(u16 *data, u16 len, u16 *out)
+static u16 RequestMan_F0(u16 *data, u16 len, ManMsg **msg)
 {
-	if (len > 1 || out == 0) return false;
+	if (len > 1 || msg == 0 || *msg == 0) return false;
 
 	SaveMainParams();
 
-	out[0] = (manReqWord & manReqMask) | 0xF0;
+	(*msg)->data[0] = (manReqWord & manReqMask) | 0xF0;
 
 	return 1;
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static u16 RequestMan(u16 *data, u16 len, u16 *out)
+static u16 RequestMan(u16 *data, u16 len, ManMsg **msg)
 {
 	u16 r = 0;
 
 	u16 t = data[0];
 
-	if ((t & manReqMask) != manReqWord || len < 1)
+	if ((t & manReqMask) != manReqWord || len < 1 || msg == 0 || *msg == 0)
 	{
 		return 0;
 	};
@@ -312,14 +294,14 @@ static u16 RequestMan(u16 *data, u16 len, u16 *out)
 
 	switch (t)
 	{
-		case 0x0: 	r = RequestMan_00(data, len, out); break;
-		case 0x1: 	r = RequestMan_10(data, len, out); break;
-		case 0x2: 	r = RequestMan_20(data, len, out); break;
-		case 0x3: 	r = RequestMan_30(data, len, out); break;
-		case 0x4: 	r = RequestMan_40(data, len, out); break;
-		case 0x8: 	r = RequestMan_80(data, len, out); break;
-		case 0x9:	r = RequestMan_90(data, len, out); break;
-		case 0xF:	r = RequestMan_F0(data, len, out); break;
+		case 0x0: 	r = RequestMan_00(data, len, msg); break;
+		case 0x1: 	r = RequestMan_10(data, len, msg); break;
+		case 0x2: 	r = RequestMan_20(data, len, msg); break;
+		case 0x3: 	r = RequestMan_30(data, len, msg); break;
+		case 0x4: 	r = RequestMan_40(data, len, msg); break;
+		case 0x8: 	r = RequestMan_80(data, len, msg); break;
+		case 0x9:	r = RequestMan_90(data, len, msg); break;
+		case 0xF:	r = RequestMan_F0(data, len, msg); break;
 	};
 
 	return r;
@@ -354,20 +336,18 @@ static void UpdateMan()
 			{
 				ManMsg *out = (ManMsg*)manTrmDtaa;
 
-				
-
 				if (rb.recieved && rb.len >= sizeof(manRcvData.hdr)
 					&& GetCRC16(&manRcvData.hdr, sizeof(manRcvData.hdr)) == 0
-					&& GetCRC16(manRcvData.data, manRcvData.hdr.dataLen) == manRcvData.hdr.dataCRC)
+					&& GetCRC16((void*)manRcvData.data, manRcvData.hdr.dataLen) == manRcvData.hdr.dataCRC)
 				{
-					u16 len = RequestMan(manRcvData.data, manRcvData.hdr.dataLen>>1, out->data);
+					u16 len = RequestMan((u16*)manRcvData.data, manRcvData.hdr.dataLen>>1, &out);
 
 					if (len != 0)
 					{
-						out->hdr.ver		= out->VER;
+						out->hdr.ver		= out->hdr.VER;
 						out->hdr.magic		= 0x55;
 						out->hdr.dataLen	= len*2;
-						out->hdr.dataCRC	= GetCRC16(out->data, out->hdr.dataLen);
+						out->hdr.dataCRC	= GetCRC16((void*)out->data, out->hdr.dataLen);
 						out->hdr.crc		= GetCRC16(&out->hdr, sizeof(out->hdr)-2);
 
 						wb.data = out;
@@ -390,6 +370,8 @@ static void UpdateMan()
 
 			if (!comdsp.Update())
 			{
+				if (cmdStartADC) StartLF(), StartHF(), cmdStartADC = false;
+
 				i = 0;
 			};
 
@@ -468,204 +450,6 @@ static void UpdateMan()
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-static DSCSPI dscAccel;
-
-//static i16 ax = 0, ay = 0, az = 0, at = 0;
-
-
-static u8 txAccel[25] = { 0 };
-static u8 rxAccel[50];
-
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-static bool AccelReadReg(byte reg, u16 count)
-{
-	dscAccel.adr = (reg<<1)|1;
-	dscAccel.alen = 1;
-	//dscAccel.baud = 8000000;
-	dscAccel.csnum = 0;
-	dscAccel.wdata = 0;
-	dscAccel.wlen = 0;
-	dscAccel.rdata = rxAccel;
-	dscAccel.rlen = count;
-
-	return spiadxl.AddRequest(&dscAccel);
-}
-
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-static bool AccelWriteReg(byte reg, u16 count)
-{
-	dscAccel.adr = (reg<<1)|0;
-	dscAccel.alen = 1;
-	dscAccel.csnum = 0;
-	dscAccel.wdata = txAccel;
-	dscAccel.wlen = count;
-	dscAccel.rdata = 0;
-	dscAccel.rlen = 0;
-
-	return spiadxl.AddRequest(&dscAccel);
-}
-
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-static void UpdateAccel()
-{
-	static byte i = 0; 
-	static i32 fx = 0, fy = 0, fz = 0, fv = 0, ft = 0;
-
-	static TM32 tm;
-
-	spiadxl.Update();
-
-	switch (i)
-	{
-	case 0:
-
-		txAccel[0] = 0x52;
-		AccelWriteReg(0x2F, 1); // Reset
-
-		i++;
-
-		break;
-
-	case 1:
-
-		if (dscAccel.ready)
-		{
-			tm.Reset();
-
-			i++;
-		};
-
-		break;
-
-	case 2:
-
-		if (tm.Check(35))
-		{
-			AccelReadReg(0x1E, 18);
-
-			i++;
-		};
-
-		break;
-
-	case 3:
-
-		if (dscAccel.ready)
-		{
-			txAccel[0] = 0;
-			AccelWriteReg(0x28, 1); // FILTER SETTINGS REGISTER
-
-			i++;
-		};
-
-		break;
-
-	case 4:
-
-		if (dscAccel.ready)
-		{
-			txAccel[0] = 0;
-			AccelWriteReg(0x2D, 1); // CTRL Set PORST to zero
-
-			i++;
-		};
-
-		break;
-
-	case 5:
-
-		if (dscAccel.ready)
-		{
-			AccelReadReg(0x2D, 1);
-
-			i++;
-		};
-
-		break;
-
-	case 6:
-
-		if (dscAccel.ready)
-		{
-			if (rxAccel[0] != 0)
-			{
-				txAccel[0] = 0;
-				AccelWriteReg(0x2D, 1); // CTRL Set PORST to zero
-				i--; 
-			}
-			else
-			{
-				txAccel[0] = 0;
-				AccelWriteReg(0x2E, 1); // Self Test
-
-				tm.Reset();
-				i++;
-			};
-		};
-
-		break;
-
-	case 7:
-
-		if (dscAccel.ready)
-		{
-			i++;
-		};
-
-		break;
-
-	case 8:
-
-		if (tm.Check(10))
-		{
-			AccelReadReg(6, 11); // X_MSB 
-
-			i++;
-		};
-
-		break;
-
-	case 9:
-
-		if (dscAccel.ready)
-		{
-			i32 t = (rxAccel[0] << 8)  | rxAccel[1];
-			i32 x = (rxAccel[2] << 24) | (rxAccel[3] << 16) | (rxAccel[4]  <<8);
-			i32 y = (rxAccel[5] << 24) | (rxAccel[6] << 16) | (rxAccel[7]  <<8);
-			i32 z = (rxAccel[8] << 24) | (rxAccel[9] << 16) | (rxAccel[10] <<8);
-
-			fx += (x - fx) / 16;
-			fy += (y - fy) / 16;
-			fz += (z - fz) / 16;
-			ft += (t - ft) / 4;
-
-			ay = -(fz / 65536); 
-			ax = -(fy / 65536); 
-			az =  (fx / 65536);
-
-			//at = 2500 + ((1852 - t) * 2000 + 91) / 181;
-			at = 250 + ((1852 - ft) * 1132 + 512) / 1024;
-
-			i32 vx = ABS(x - fx) / 64;
-			i32 vy = ABS(y - fy) / 64;
-			i32 vz = ABS(z - fz) / 64;
-
-			fv += ((i32)(vx+vy+vz)-fv)/256;
-
-			t = fv/1024;
-
-			vibration = LIM(t, 0, 0xFFFF);
-
-			i--;
-		};
-
-		break;
-	};
-}
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1313,8 +1097,6 @@ int main()
 	InitTaskList();
 
 	comdsp.Connect(ComPort::ASYNC, 2000000, 0, 2);
-
-	spiadxl.Connect(ADXL_BAUDRATE);
 
 	u32 fc = 0;
 	u16 n = 0;
