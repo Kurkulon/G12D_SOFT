@@ -19,7 +19,7 @@
 //#include "G_TRM.H"
 
 
-enum { VERSION = 0x200 };
+enum { VERSION = 0x300 };
 
 //#pragma O3
 //#pragma Otime
@@ -133,12 +133,13 @@ static u16 RequestMan_10(u16 *data, u16 len, ManMsg **msg)
 	__packed u16 *start = out;
 
 	*(out++)	= (manReqWord & manReqMask) | 0x10;		//	1. ответное слово
-	*(out++)	= 0;									//	2. ШС усиление (0 - автоподстройка)
-	*(out++)	= 0;									//	3. ШС шаг, мкс
-	*(out++)	= 0;									//	4. ШС длина, отсч
-	*(out++)	= 0;									//	5. ШС фильтр	   
-	*(out++)	= 0;									//	6. ШС количество окон спектра
-	*(out++)	= 0;									//	7. процент перекрытия окон (%)
+	*(out++)	= 0;									//	2. ШС усиление (0 - автоподстройка, 1..16)
+	*(out++)	= 0;									//	3. НЧ длина оцифровки (ushort)
+	*(out++)	= 0;									//	4. НЧ шаг оцифровки (ushort)
+	*(out++)	= 0;									//	5. ВЧ длина оцифровки (ushort)
+	*(out++)	= 0;									//	6. ВЧ шаг оцифровки (ushort)
+	*(out++)	= 0;									//	7. ШС НЧ количество окон спектра
+	*(out++)	= 0;									//	8. ШС ВЧ количество окон спектра
 
 	return out - start;
 }
@@ -167,36 +168,30 @@ static u16 RequestMan_30(u16 *data, u16 len, ManMsg **msg)
 {
 	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
-	rsp30 = GetReadyHF();
-	rsp40 = GetReadyLF();
+	//rsp30 = GetReadyHF();
+	//rsp40 = GetReadyLF();
 
-	if (!rsp30.Valid())
-	{
-		__packed u16 *out = (*msg)->data;
-		out[0] = data[0];
-		return 1;
-	};
+	//if (!rsp30.Valid())
+	//{
+	//	__packed u16 *out = (*msg)->data;
+	//	out[0] = data[0];
+	//	return 1;
+	//};
 
-	Rsp30 *rsp = (Rsp30*)((byte*)(rsp30->GetDataPtr())-sizeof(Rsp30::hdr));
-	*msg = (ManMsg*)rsp;
+	Rsp30 *rsp = (Rsp30*)(*msg);
+	//*msg = (ManMsg*)rsp;
 
-	__packed u16 *out = (*msg)->data;
-	__packed u16 *start = out;
+	rsp->rsp.rw 		= data[0];		
+	rsp->rsp.gain  		= 1;		
+	rsp->rsp.spktrNum 	= 16;		
+	rsp->rsp.freqStep 	= 1;		
+	rsp->rsp.freqStart 	= 1;		
+	rsp->rsp.maxAmp   	= 1;			
+	rsp->rsp.pow 		= 1;		
+	rsp->rsp.temp 		= temp;		
+	rsp->rsp.cpuTemp 	= GetTempCPU();		
 
-	rsp->rsp.rw			= data[0];		
-	rsp->rsp.amp 		= 1;		
-	rsp->rsp.step		= 100;		
-	rsp->rsp.size		= 1;		
-	rsp->rsp.filtr		= 0;		
-	rsp->rsp.channels	= 512;			
-	rsp->rsp.spectPart	= 1;		
-	rsp->rsp.spectStep	= 1;		
-	rsp->rsp.overlapp	= 50;		
-	rsp->rsp.ampMax		= 1;		
-	rsp->rsp.ampMid		= 1;		
-	rsp->rsp.uTemp		= temp;		
-
-	return (sizeof(rsp->rsp) - sizeof(rsp->rsp.data)) / 2 + rsp->rsp.channels;
+	return (sizeof(rsp->rsp) - sizeof(rsp->rsp.data)) / 2 + rsp->rsp.spktrNum;
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -205,12 +200,28 @@ static u16 RequestMan_40(u16 *data, u16 len, ManMsg **msg)
 {
 	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
-	__packed u16 *out = (*msg)->data;
-	__packed u16 *start = out;
+	rsp40 = (data[0]&1) ? GetReadyHF() : GetReadyLF();
 
-	*(out++)	= data[0];		//	1. ответное слово
+	if (!rsp40.Valid())
+	{
+		__packed u16 *out = (*msg)->data;
+		out[0] = data[0];
+		return 1;
+	};
 
-	return out - start;
+	Rsp40 *rsp = (Rsp40*)(rsp40->GetDataPtr());
+	*msg = (ManMsg*)rsp;
+
+	rsp->rsp.rw 		= data[0];		
+	rsp->rsp.gain 		= 0;		
+	rsp->rsp.sl 		= 4096;		
+	rsp->rsp.st 		= (data[0]&1) ? 500 : 10000;		
+	rsp->rsp.maxAmp 	= 1;		
+	rsp->rsp.pow 		= 1;			
+	rsp->rsp.temp 		= temp;		
+	rsp->rsp.cpuTemp 	= GetTempCPU();		
+
+	return (sizeof(rsp->rsp) - sizeof(rsp->rsp.data)) / 2 + rsp->rsp.sl;
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -221,15 +232,19 @@ static u16 RequestMan_80(u16 *data, u16 len, ManMsg **msg)
 
 	switch (data[1])
 	{
-		case 1:
+		case 1:		// 0x1 - номер прибора
 
 			mv.numDevice = data[2];
 
 			break;
 
-		case 2:
+		case 2:		// 0x2 - резерв
 
 			manTrmBaud = data[2] - 1;	//SetTrmBoudRate(data[2]-1);
+
+			break;
+
+		case 3:		// 0x3 - Изменить адрес прибора (основной 0x06 /дубликат 0x07)
 
 			break;
 	};
@@ -247,12 +262,13 @@ static u16 RequestMan_90(u16 *data, u16 len, ManMsg **msg)
 
 	switch(data[1])
 	{
-		case 0x01:			break;	//	0x1 - ШС КУ(0 - автоподстройка, 1..22), 
-		case 0x02:			break;	//	0х2 - ШС шаг мкс(8), 
-		case 0x03:			break;	//	0х3 - ШС размер (8192), 
-		case 0x04:			break;	//	0x4 - ШС тип фильра (0-нет,1,2,3)
-		case 0x05:			break;	//	0x5 - ШС количество окон спектра(2..1024)
-		case 0x06:			break;	//	0x6 - ШС процент перекрытия окон (0..10000%)
+		case 0x01:			break;	//0x1. ШС КУ(0 - автоподстройка, 1..16), 
+		case 0x02:			break;	//0x2. НЧ длина оцифровки (ushort) 
+		case 0x03:			break;	//0x3. НЧ шаг оцифровки (ushort) (0.01 мкс)
+		case 0x04:			break;	//0x4. ВЧ длина оцифровки (ushort)
+		case 0x05:			break;	//0x5. ВЧ шаг оцифровки (ushort) (0.01 мкс)
+		case 0x06:			break;	//0x6. ШС количество окон спектра НЧ (4..2048)
+		case 0x07:			break;	//0x7. ШС количество окон спектра ВЧ (4..2048)
 
 		default:
 

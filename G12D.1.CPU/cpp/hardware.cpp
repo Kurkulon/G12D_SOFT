@@ -253,12 +253,16 @@ Ptr<MB> GetReadyHF()
 
 MB* AllocLFB()
 {
-	MB* mb = AllocMemBuffer(sizeof(Rsp30));
+	MB* mb = AllocMemBuffer(sizeof(Rsp40));
 
-	if (mb != 0)
-	{
-		mb->dataOffset = sizeof(Rsp30::hdr);
-	};
+	return mb;
+}
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+MB* AllocHFB()
+{
+	MB* mb = AllocMemBuffer(32768);
 
 	return mb;
 }
@@ -285,9 +289,9 @@ static void Update_LF()
 				{
 					cmdStartLF = false;
 
-					Rsp30 &rsp = *((Rsp30*)mb->GetDataPtr());
+					Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
 
-					lfDMA.ReadPeripheral(&HW::ADC0->RESULT, (void*)(rsp.rsp.data-8), ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|DMCH_TRIGSRC_ADC0_RESRDY, DMDSC_BEATSIZE_HWORD|DMDSC_BLOCKACT_NOACT); 
+					lfDMA.ReadPeripheral(&HW::ADC0->RESULT, (void*)(rsp.rsp.data), ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|DMCH_TRIGSRC_ADC0_RESRDY, DMDSC_BEATSIZE_HWORD|DMDSC_BLOCKACT_NOACT); 
 
 					i++;
 				};
@@ -299,6 +303,15 @@ static void Update_LF()
 
 			if (lfDMA.CheckComplete())
 			{
+				Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
+
+				__packed u16 *p = rsp.rsp.data;
+
+				for(u16 n = 0; n < ArraySize(rsp.rsp.data); n++)
+				{
+					*(p++) = p[0]-32768;
+				};
+
 				readyLF.Add(mb);
 
 				mb.Free();
@@ -326,7 +339,7 @@ static void Update_HF()
 
 			if (cmdStartHF)
 			{
-				mb = AllocLFB();
+				mb = AllocHFB();
 
 				if (mb.Valid())
 				{
@@ -334,20 +347,20 @@ static void Update_HF()
 
 					cmdStartHF = false;
 
-					Rsp30 &rsp = *((Rsp30*)mb->GetDataPtr());
+					Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
 
 					while(adcspi->SYNCBUSY);
 
 					do t = adcspi->DATA; while(adcspi->INTFLAG & SPI_RXC); 
 
-					hfDMA1.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC1, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
-					hfDMA2.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC2, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
-					hfDMAR.ReadPeripheral(&adcspi->DATA, (void*)(rsp.rsp.data-12), sizeof(rsp.rsp.data), DMCH_TRIGACT_BURST|ADCSPI_DMCH_TRIGSRC, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
+					hfDMA1.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, 4096, DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC1, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
+					hfDMA2.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, 4096, DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC2, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
+					hfDMAR.ReadPeripheral(&adcspi->DATA, (void*)(rsp.rsp.data), 8192, DMCH_TRIGACT_BURST|ADCSPI_DMCH_TRIGSRC, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
 
 					adcTCC->WAVE = TCC_WAVEGEN_NPWM;
-					adcTCC->PER = US2ADCTCC(2.5)-1;
-					adcTCC->CC[0] = US2ADCTCC(0.8);
-					adcTCC->CC[1] = US2ADCTCC(1.6);
+					adcTCC->PER = US2ADCTCC(5)-1;
+					adcTCC->CC[0] = US2ADCTCC(1);
+					adcTCC->CC[1] = US2ADCTCC(2);
 
 					adcTCC->INTENCLR = ~0;
 					//adcTCC->INTENSET = TCC_OVF;
@@ -378,13 +391,14 @@ static void Update_HF()
 				hfDMA2.Disable();
 				hfDMAR.Disable();
 
-				Rsp30 &rsp = *((Rsp30*)mb->GetDataPtr());
+				Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
 
-				__packed u16 *p = rsp.rsp.data;
+				__packed u16 *src = rsp.rsp.data;
+				__packed u16 *dst = rsp.rsp.data;
 
-				for(u16 n = 0; n < ArraySize(rsp.rsp.data); n++)
+				for(u16 n = 0; n < 4096; n++)
 				{
-					p[0] = ReverseWord(p[0]); p++;
+					*(dst++) = ReverseWord(src[0])-32768;src++; //((ReverseWord(src[0])+ReverseWord(src[1]))/2)-32768; src += 2;
 				};
 
 				readyHF.Add(mb);
