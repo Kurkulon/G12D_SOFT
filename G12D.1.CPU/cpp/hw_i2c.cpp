@@ -23,6 +23,17 @@ static S_I2C i2c(I2C_SERCOM_NUM, PIO_I2C, SCL, I2C_PMUX_SCL, PIO_I2C, SDA, I2C_P
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+static void Update_I2C()
+{
+	I2C_Update();
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static Task  taskUpdateI2C(	Update_I2C,	US2CTM(1) );
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 bool I2C_Update()
 {
 	return i2c.Update();
@@ -40,6 +51,8 @@ bool I2C_AddRequest(DSCI2C *d)
 void I2C_Init()
 {
 	i2c.Connect(I2C_BAUDRATE);
+
+	globalTaskList.Add(&taskUpdateI2C);
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

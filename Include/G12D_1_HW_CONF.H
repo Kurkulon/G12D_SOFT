@@ -113,7 +113,7 @@
 	//#define SERCOM_1			1
 	//#define 					2
 	#define I2C_SERCOM_NUM		3
-	#define ADXL_SERCOM_NUM		4
+	//#define ADXL_SERCOM_NUM		4
 	//#define SPI_SERCOM_NUM		5
 	#define ADC_SERCOM_NUM		6
 	#define UART0_SERCOM_NUM	7
@@ -127,8 +127,8 @@
 	#define	LF_DMACH_NUM		3
 	#define	UART0_DMACH_NUM		4
 	#define	I2C_DMACH_NUM		5
-	#define	SPI_DMA_TX_CH		6
-	#define	SPI_DMA_RX_CH		7
+	#define	MUX_DMA_TX_CH		6
+	#define	MUX_DMA_RX_CH		7
 //	#define	ADXL_DMA_TX_CH		8
 //	#define	ADXL_DMA_RX_CH		9
 	//#define	ADC_DMA					30
@@ -285,64 +285,41 @@
 
 	// ++++++++++++++ AD5312 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 	
-	#define PIO_SCLK			HW::PIOB
-	#define PIO_MOSI			HW::PIOB
-	#define PIO_SYNC			HW::PIOA
+	#define PIO_MUXSCLK			HW::PIOA
+	#define PIO_MUXDIN			HW::PIOA
+	#define PIO_MUXSDO			HW::PIOA
+	#define PIO_MUXSYNC			HW::PIOA
 
-	#define PIN_SCLK			17
-	#define PIN_MOSI			16 
-	#define PIN_SYNC			20 
+	#define PIN_MUXSCLK			5
+	#define PIN_MUXDIN			4 
+	#define PIN_MUXSDO			7 
+	#define PIN_MUXSYNC			6 
 
-	#define SCLK				(1<<PIN_SCLK) 
-	#define MOSI				(1<<PIN_MOSI) 
-	#define SYNC				(1<<PIN_SYNC) 
+	#define MUXSCLK				(1<<PIN_MUXSCLK	) 
+	#define MUXDIN				(1<<PIN_MUXDIN	) 
+	#define MUXSDO				(1<<PIN_MUXSDO	) 
+	#define MUXSYNC				(1<<PIN_MUXSYNC	) 
 
-	#define SPI_PMUX_SCLK		PORT_PMUX_C 
-	#define SPI_PMUX_MOSI		PORT_PMUX_C 
-	#define SPI_DIPO_BITS		SPI_DIPO(2)
-	#define SPI_DOPO_BITS		SPI_DOPO(0) 
+	#define MUX_PMUX_SCLK		PORT_PMUX_D 
+	#define MUX_PMUX_DIN		PORT_PMUX_D 
+	#define MUX_PMUX_SDO		PORT_PMUX_D 
+	#define MUX_DIPO_BITS		(SPI_DIPO(3)|SPI_CPHA)
+	#define MUX_DOPO_BITS		SPI_DOPO(0) 
 
-	#define SPI_GEN_SRC			GEN_MCK
-	#define SPI_GEN_CLK			GEN_MCK_CLK
-	#define SPI_BAUDRATE		8000000
+	#define MUX_GEN_SRC			GEN_MCK
+	#define MUX_GEN_CLK			GEN_MCK_CLK
+	#define MUX_BAUDRATE		8000000
 
 	//#define Pin_SPI_IRQ_Set()	HW::PIOB->BSET(15)		
 	//#define Pin_SPI_IRQ_Clr()	HW::PIOB->BCLR(15)		
 
-	// ++++++++++++++ ADXL355  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-	
-	#define PIO_ADXLSPCK		HW::PIOB
-	#define PIO_ADXLMOSI		HW::PIOB
-	#define PIO_ADXLMISO		HW::PIOB
-	#define PIO_ADXL_CS			HW::PIOB
-
-	#define PIN_ADXLSPCK		13
-	#define PIN_ADXLMOSI		12 
-	#define PIN_ADXLMISO		15 
-	#define PIN_ADXL_CS			14
-
-	#define ADXLSPCK			(1<<PIN_ADXLSPCK) 
-	#define ADXLMOSI			(1<<PIN_ADXLMOSI) 
-	#define ADXLMISO			(1<<PIN_ADXLMISO) 
-	#define ADXL_CS				(1<<PIN_ADXL_CS	) 
-
-	#define ADXL_PMUX_SPCK		PORT_PMUX_C 
-	#define ADXL_PMUX_MOSI		PORT_PMUX_C
-	#define ADXL_PMUX_MISO		PORT_PMUX_C
-
-	#define ADXL_DIPO_BITS		SPI_DIPO(3)
-	#define ADXL_DOPO_BITS		SPI_DOPO(0) 
-
-	#define ADXL_GEN_SRC		GEN_MCK
-	#define ADXL_GEN_CLK		GEN_MCK_CLK
-	#define ADXL_BAUDRATE		8000000
 
 	// ++++++++++++++	PIO INIT	++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-	#define PIOA_INIT_DIR		(PA01|PA02|PA03|PA04|PA05|PA06|PA07|PA10|PA11|PA15|PA17|PA18|PA19|RTS0|PA27)
+	#define PIOA_INIT_DIR		(PA01|PA02|PA03|PA10|PA11|PA15|PA17|PA18|PA19|RTS0|PA27)
 	#define PIOA_INIT_SET		(0)
-	#define PIOA_INIT_CLR		(PA01|PA02|PA03|PA04|PA05|PA06|PA07|PA10|PA11|PA15|PA17|PA18|PA19|RTS0|PA27)
-	#define PIOA_TEST_MASK		(PA01|PA02|PA03|PA04|PA05|PA06|PA07|PA10|PA11|UTXD0|PA15|PA17|PA18|PA19|PA20|RTS0|PA22|PA23|PA27)
+	#define PIOA_INIT_CLR		(PA01|PA02|PA03|PA10|PA11|PA15|PA17|PA18|PA19|RTS0|PA27)
+	#define PIOA_TEST_MASK		(PA01|PA02|PA03|PA10|PA11|PA15|PA17|PA18|PA19|RTS0|PA27)
 
 	#define PIOB_INIT_DIR		(PB00|PB01|PB02|PB03|PB05|PB07|PB08|PB09|PB10|PB11|PB12|PB13|PB14|PB15|PB16|PB17|PB18|PB30|PB31)
 	#define PIOB_INIT_SET		(0)

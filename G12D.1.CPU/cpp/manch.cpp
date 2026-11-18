@@ -9,11 +9,11 @@
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-#define SMALL_BUF_LEN	512
-#define MEDIUM_BUF_LEN	(8192+32)
-#define HUGE_BUF_LEN	(32768+32)  //12224  //(sizeof(RspRcv02)+32) //2034
+#define SMALL_BUF_LEN	(4096+256)
+#define MEDIUM_BUF_LEN	(8192+256)
+#define HUGE_BUF_LEN	(32768+256)  //12224  //(sizeof(RspRcv02)+32) //2034
 
-#define	NUM_SMALL_BUF	8       
+#define	NUM_SMALL_BUF	2       
 #define	NUM_MEDIUM_BUF	2
 #define	NUM_HUGE_BUF	2
 

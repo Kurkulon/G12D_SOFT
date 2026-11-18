@@ -5,7 +5,8 @@
 #include "time.h"
 #include "i2c.h"
 #include "spi.h"
-#include <MEM\mem.h>
+#include "MEM\mem.h"
+#include "TaskList.h"
 
 //#include "hw_nand.h"
 //#include "hw_rtm.h"
@@ -14,6 +15,7 @@
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+extern TaskList globalTaskList;
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -29,7 +31,7 @@ inline i16 GetTemp() { extern i16 temp; return temp; }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 extern void InitHardware();
-extern void UpdateHardware();
+//extern void UpdateHardware();
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -41,6 +43,10 @@ inline void StartHF() { extern bool cmdStartHF; cmdStartHF = true;  }
 
 extern Ptr<MB> GetReadyLF();
 extern Ptr<MB> GetReadyHF();
+extern Ptr<MB> GetSpectrLF();
+extern Ptr<MB> GetSpectrHF();
+
+extern void SetGain(byte v);
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

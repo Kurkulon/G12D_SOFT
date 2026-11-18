@@ -65,7 +65,7 @@ static u16 manTrmDtaa[4096];
 //static u16 manPckData[128 + WINDOW_SIZE*4 + 16];
 //static u16 manUnpData[128 + WINDOW_SIZE*4 + 16];
 static u16 manTrmBaud = 0;
-static u16 tlsTrmBaud = 0;
+//static u16 tlsTrmBaud = 0;
 
 static const u16 manReqWord = 0x0600;
 static const u16 manReqMask = 0xFF00;
@@ -168,28 +168,27 @@ static u16 RequestMan_30(u16 *data, u16 len, ManMsg **msg)
 {
 	if (len == 0 || len > 1 || msg == 0 || *msg == 0) return 0;
 
-	//rsp30 = GetReadyHF();
-	//rsp40 = GetReadyLF();
+	rsp30 = (data[0]&1) ? GetSpectrHF() : GetSpectrLF();
 
-	//if (!rsp30.Valid())
-	//{
-	//	__packed u16 *out = (*msg)->data;
-	//	out[0] = data[0];
-	//	return 1;
-	//};
+	if (!rsp30.Valid())
+	{
+		__packed u16 *out = (*msg)->data;
+		out[0] = data[0];
+		return 1;
+	};
 
-	Rsp30 *rsp = (Rsp30*)(*msg);
-	//*msg = (ManMsg*)rsp;
+	Rsp30 *rsp = (Rsp30*)(rsp30->GetDataPtr());
+	*msg = (ManMsg*)rsp;
 
-	rsp->rsp.rw 		= data[0];		
-	rsp->rsp.gain  		= 1;		
-	rsp->rsp.spktrNum 	= 16;		
-	rsp->rsp.freqStep 	= 1;		
-	rsp->rsp.freqStart 	= 1;		
-	rsp->rsp.maxAmp   	= 1;			
-	rsp->rsp.pow 		= 1;		
-	rsp->rsp.temp 		= temp;		
-	rsp->rsp.cpuTemp 	= GetTempCPU();		
+	rsp->rsp.rw 			= data[0];		
+	//rsp->rsp.gain  		= 1;		
+	//rsp->rsp.spktrNum		= 16;		
+	//rsp->rsp.freqStep		= 1;		
+	//rsp->rsp.freqStart	= 1;		
+	//rsp->rsp.maxAmp		= 1;			
+	//rsp->rsp.pow 			= 1;		
+	rsp->rsp.temp 			= temp;		
+	rsp->rsp.cpuTemp 		= GetTempCPU();		
 
 	return (sizeof(rsp->rsp) - sizeof(rsp->rsp.data)) / 2 + rsp->rsp.spktrNum;
 }
@@ -213,11 +212,11 @@ static u16 RequestMan_40(u16 *data, u16 len, ManMsg **msg)
 	*msg = (ManMsg*)rsp;
 
 	rsp->rsp.rw 		= data[0];		
-	rsp->rsp.gain 		= 0;		
-	rsp->rsp.sl 		= 4096;		
-	rsp->rsp.st 		= (data[0]&1) ? 500 : 10000;		
-	rsp->rsp.maxAmp 	= 1;		
-	rsp->rsp.pow 		= 1;			
+	//rsp->rsp.gain 	= 0;		
+	//rsp->rsp.sl 		= 4096;		
+	//rsp->rsp.st 		= (data[0]&1) ? 500 : 10000;		
+	//rsp->rsp.maxAmp 	= 1;		
+	//rsp->rsp.pow 		= 1;			
 	rsp->rsp.temp 		= temp;		
 	rsp->rsp.cpuTemp 	= GetTempCPU();		
 
@@ -262,13 +261,13 @@ static u16 RequestMan_90(u16 *data, u16 len, ManMsg **msg)
 
 	switch(data[1])
 	{
-		case 0x01:			break;	//0x1. ШС КУ(0 - автоподстройка, 1..16), 
-		case 0x02:			break;	//0x2. НЧ длина оцифровки (ushort) 
-		case 0x03:			break;	//0x3. НЧ шаг оцифровки (ushort) (0.01 мкс)
-		case 0x04:			break;	//0x4. ВЧ длина оцифровки (ushort)
-		case 0x05:			break;	//0x5. ВЧ шаг оцифровки (ushort) (0.01 мкс)
-		case 0x06:			break;	//0x6. ШС количество окон спектра НЧ (4..2048)
-		case 0x07:			break;	//0x7. ШС количество окон спектра ВЧ (4..2048)
+		case 0x01:	SetGain(data[2]);	break;	//0x1. ШС КУ(0 - автоподстройка, 1..16), 
+		case 0x02:						break;	//0x2. НЧ длина оцифровки (ushort) 
+		case 0x03:						break;	//0x3. НЧ шаг оцифровки (ushort) (0.01 мкс)
+		case 0x04:						break;	//0x4. ВЧ длина оцифровки (ushort)
+		case 0x05:						break;	//0x5. ВЧ шаг оцифровки (ushort) (0.01 мкс)
+		case 0x06:						break;	//0x6. ШС количество окон спектра НЧ (4..2048)
+		case 0x07:						break;	//0x7. ШС количество окон спектра ВЧ (4..2048)
 
 		default:
 
@@ -387,6 +386,9 @@ static void UpdateMan()
 			if (!comdsp.Update())
 			{
 				if (cmdStartADC) StartLF(), StartHF(), cmdStartADC = false;
+
+				rsp30.Free();
+				rsp40.Free();
 
 				i = 0;
 			};
@@ -902,11 +904,11 @@ static void TestFRAM()
 
 	static byte buf[sizeof(vv)*2+16];
 
-	static byte count = 0;
+	//static byte count = 0;
 
 	static u32 timeStamp = 0;
 
-	bool loadVarsOk = false;
+	//bool loadVarsOk = false;
 
 	switch(state)
 	{
@@ -1080,7 +1082,7 @@ static void TestFRAM()
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-static TaskList taskList;
+//static TaskList taskList;
 
 static void InitTaskList()
 {
@@ -1088,12 +1090,12 @@ static void InitTaskList()
 	{
 		Task(UpdateTemp,		US2CTM(100)		),
 		Task(SaveVars,			US2CTM(100)		),
-		Task(UpdateHardware,	US2CTM(1)		),
+		//Task(UpdateHardware,	US2CTM(1)		),
 		Task(UpdateMan,			US2CTM(10)		)
 //		Task(TestFRAM,			US2CTM(100)		),
 	};
 
-	for (u16 i = 0; i < ArraySize(tsk); i++) taskList.Add(tsk+i);
+	for (u16 i = 0; i < ArraySize(tsk); i++) globalTaskList.Add(tsk+i);
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1115,7 +1117,7 @@ int main()
 	comdsp.Connect(ComPort::ASYNC, 2000000, 0, 2);
 
 	u32 fc = 0;
-	u16 n = 0;
+	//u16 n = 0;
 
 	SEGGER_RTT_WriteString(0, RTT_CTRL_TEXT_BRIGHT_WHITE "Main Loop start ...\n");
 
@@ -1123,7 +1125,7 @@ int main()
 	{
 		Pin_MainLoop_Set();
 
-		taskList.Update(); //UpdateMisc();
+		globalTaskList.Update(); //UpdateMisc();
 
 		Pin_MainLoop_Clr();
 

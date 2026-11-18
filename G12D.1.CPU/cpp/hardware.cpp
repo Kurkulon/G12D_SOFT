@@ -12,17 +12,36 @@
 //#include <math.h>
 #include "spi.h"
 #include <MEM\mem.h>
+#include <math.h>
 
 //#define WIN_TEST
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-//static u32 SPI_CS_MASK[] = { SYNC };
+#ifndef PI
+#define PI 3.1415926535897932384626433832795
+#endif
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-//static S_SPIM	spidac(SPI_SERCOM_NUM, PIO_SCLK, PIO_MOSI, 0, PIO_SYNC, SCLK, MOSI, 0, SPI_PMUX_SCLK, SPI_PMUX_MOSI, 0, SPI_CS_MASK, ArraySize(SPI_CS_MASK), 
-//	SPI_DIPO_BITS, SPI_DOPO_BITS, SPI_GEN_SRC, SPI_GEN_CLK, SPI_DMA_TX_CH, SPI_DMA_RX_CH);
+struct complex_float
+{
+	float re;
+	float im;
+};
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+TaskList globalTaskList;
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static u32 MUX_CS_MASK[] = { MUXSYNC };
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static S_SPIM	spimux(MUX_SERCOM_NUM, PIO_MUXSCLK, PIO_MUXDIN, PIO_MUXSDO, PIO_MUXSYNC, MUXSCLK, MUXDIN, MUXSDO, MUX_PMUX_SCLK, MUX_PMUX_DIN, MUX_PMUX_SDO, MUX_CS_MASK, ArraySize(MUX_CS_MASK), 
+	MUX_DIPO_BITS, MUX_DOPO_BITS, MUX_GEN_SRC, MUX_GEN_CLK, MUX_DMA_TX_CH, MUX_DMA_RX_CH);
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -223,6 +242,13 @@ bool cmdStartHF = false;
 ListPtr<MB> readyLF;
 ListPtr<MB> readyHF;
 
+ListPtr<MB> processLF;
+ListPtr<MB> processHF;
+
+ListPtr<MB> spectrLF;
+ListPtr<MB> spectrHF;
+
+
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 i32 tempCPU = 0;
@@ -234,6 +260,44 @@ static i32 temp_k1 = 0;
 static i32 temp_k2 = 0;
 static i16 temp_k3 = 0;
 static i16 temp_k4 = 0; 
+
+static byte gainDataBuf		= 0;
+static byte mainGain		= 0;	// (0 - автоподстройка, 1..16)	
+static byte autoGain		= 0;
+
+static byte gainValue[16] = {1,2,3,4,5,6,7,8,11,12,13,14,15,16,17,18};
+
+//	Усиление:
+//	0	1
+//	1	2
+//	2	3.05
+//	3	4.05
+//	4	5.17
+//	5	6.17
+//	6	7.22
+//	7	8.22
+//	8	11
+//	9	12
+//	10	13.05
+//	11	14.05
+//	12	15.17
+//	13	16.17
+//	14	17.22
+//	15	18.22
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static void SetGainDataBuf(byte gain) 
+{
+	gainDataBuf = (gain&15) | ((gain&15)<<4);
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+void SetGain(byte v) 
+{
+	mainGain = v;
+}
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -251,31 +315,162 @@ Ptr<MB> GetReadyHF()
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-MB* AllocLFB()
+Ptr<MB> GetSpectrLF()
+{
+	return spectrLF.Get();
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Ptr<MB> GetSpectrHF()
+{
+	return spectrHF.Get();
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+MB* AllocRsp30()
+{
+	MB* mb = AllocMemBuffer(sizeof(Rsp30));
+
+	return mb;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+MB* AllocRsp40()
 {
 	MB* mb = AllocMemBuffer(sizeof(Rsp40));
 
 	return mb;
 }
 
-//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-MB* AllocHFB()
+MB* AllocFFT()
 {
 	MB* mb = AllocMemBuffer(32768);
 
 	return mb;
 }
 
-//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+complex_float _coef[16];
+
+bool FFT(complex_float *data, u32 size, bool inverse)
+{
+	if ((size > (1u << 13)) || (size < (1u << 1))) return false;
+
+	i32 size_pow = 0;
+
+	while ((1u << (size_pow + 1)) <= size) size_pow++;
+
+	size = (1u << size_pow);
+
+	i32 i, j, n, k, io, ie, in, nn;
+	float ru, iu, rtp, itp, rtq, itq, rw, iw, sr;
+	
+	nn = size >> 1;
+	ie = size;
+	
+	for (n = 1; n <= size_pow; n++)
+	{
+		rw = _coef[size_pow - n].re;
+		iw = _coef[size_pow - n].im;
+		
+		if (inverse) iw = -iw;
+		
+		in = ie >> 1;
+		ru = 1.0f;
+		iu = 0.0f;
+		
+		for (j = 0; j < in; j++)
+		{
+			for (i = j; i < size; i += ie)
+			{
+				io = i + in;
+				rtp = data[i].re + data[io].re;
+				itp = data[i].im + data[io].im;
+				rtq = data[i].re - data[io].re;
+				itq = data[i].im - data[io].im;
+				data[io].re = rtq * ru - itq * iu;
+				data[io].im = itq * ru + rtq * iu;
+				data[i].re = rtp;
+				data[i].im = itp;
+			};
+
+			sr = ru;
+			ru = ru * rw - iu * iw;
+			iu = iu * rw + sr * iw;
+		};
+
+		ie >>= 1;
+	};
+
+	for (j = i = 1; i < size; i++)
+	{
+		if (i < j)
+		{
+			io = i - 1;
+			in = j - 1;
+			rtp = data[in].re;
+			itp = data[in].im;
+			data[in].re = data[io].re;
+			data[in].im = data[io].im;
+			data[io].re = rtp;
+			data[io].im = itp;
+		};
+
+		k = nn;
+
+		while (k < j)
+		{
+			j = j - k;
+			k >>= 1;
+		};
+
+		j = j + k;
+	};
+
+	//if (inverse) return true;
+
+	//rw = 1.0f / (size);
+	//
+	//for (i = 0; i < (size); i++)
+	//{
+	//	data[i].re *= rw;
+	//	data[i].im *= rw;
+	//};
+
+	return true;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+void Init_FFT()
+{
+	for (u32 i = 0; i < ArraySize(_coef); i++)
+	{
+		_coef[i].re = cosf(-PI / (1u << i));
+		_coef[i].im = sinf(-PI / (1u << i));
+	}
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 static Ptr<MB> mb_Update_LF;
+static Ptr<MB> fft_Update_LF;
+static Ptr<MB> sp_Update_LF;
 
 static void Update_LF()
 {
 	static byte i = 0;
+	static DSCSPI dsc;
 
-	Ptr<MB> &mb = mb_Update_LF;
+	Ptr<MB> &mb		= mb_Update_LF;
+	Ptr<MB> &fft	= fft_Update_LF;
+	Ptr<MB> &sp		= sp_Update_LF;
 
 	switch (i)
 	{
@@ -283,7 +478,7 @@ static void Update_LF()
 
 			if (cmdStartLF)
 			{
-				mb = AllocLFB();
+				mb = AllocRsp40();
 
 				if (mb.Valid())
 				{
@@ -291,7 +486,7 @@ static void Update_LF()
 
 					Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
 
-					lfDMA.ReadPeripheral(&HW::ADC0->RESULT, (void*)(rsp.rsp.data), ArraySize(rsp.rsp.data), DMCH_TRIGACT_BURST|DMCH_TRIGSRC_ADC0_RESRDY, DMDSC_BEATSIZE_HWORD|DMDSC_BLOCKACT_NOACT); 
+					lfDMA.ReadPeripheral(&HW::ADC0->RESULT, (void*)(rsp.rsp.data-1), ArraySize(rsp.rsp.data)+1, DMCH_TRIGACT_BURST|DMCH_TRIGSRC_ADC0_RESRDY, DMDSC_BEATSIZE_HWORD|DMDSC_BLOCKACT_NOACT); 
 
 					i++;
 				};
@@ -303,18 +498,160 @@ static void Update_LF()
 
 			if (lfDMA.CheckComplete())
 			{
+				i++;
+			};
+
+			break;
+
+		case 2:
+
+			fft = AllocFFT();
+
+			if (fft.Valid())
+			{
 				Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
+
+				complex_float *fftbuf = (complex_float*)fft->GetDataPtr();
 
 				__packed u16 *p = rsp.rsp.data;
 
+				i32 max = 0;
+				u32 sum = 0;
+
 				for(u16 n = 0; n < ArraySize(rsp.rsp.data); n++)
 				{
-					*(p++) = p[0]-32768;
+					i32 t = p[0]; t -= 32768; *(p++) = t;
+
+					fftbuf[n].re = t;
+					fftbuf[n].im = 0;
+
+					if (t < 0) t = -t;
+
+					if (t > max) max = t;
+
+					sum += t;
 				};
 
-				readyLF.Add(mb);
+				rsp.rsp.gain	= gainDataBuf&15;
+				rsp.rsp.sl		= ArraySize(rsp.rsp.data);
+				rsp.rsp.st		= 10000;
+				rsp.rsp.maxAmp	= max;
+				rsp.rsp.pow		= sum / rsp.rsp.sl;
 
-				mb.Free();
+				if (mainGain == 0) // 0 - автоподстройка
+				{
+					if (max > 30000)
+					{
+						if (autoGain > 0) autoGain -= 1;
+					}
+					else
+					{
+						i32 amp = max/gainValue[autoGain];
+
+						for (byte n = autoGain; n < ArraySize(gainValue); n++)
+						{
+							autoGain = n;
+
+							max = amp*gainValue[n];
+
+							if (max > 24000) break;
+						};
+
+						if (max > 30000)
+						{
+							if (autoGain > 0) autoGain -= 1;
+						};
+					};
+				}
+				else
+				{
+					autoGain = mainGain-1;
+				};
+
+				SetGainDataBuf(autoGain);
+
+				i++;
+
+			};
+			
+			break;
+
+		case 3:
+
+			dsc.adr = gainDataBuf;
+			dsc.alen = 1;
+			dsc.csnum = 0;
+			dsc.wdata = 0;
+			dsc.rdata = 0;
+			dsc.wlen = 0;
+			dsc.rlen = 0;
+
+			spimux.AddRequest(&dsc);
+
+			i++;
+
+			break;
+
+		case 4:
+
+			if (dsc.ready)
+			{
+				i++;
+			}
+			else
+			{
+				spimux.Update();
+			};
+
+			break;
+
+		case 5:
+		{
+			Rsp40 &rsp				= *((Rsp40*)mb->GetDataPtr());
+			complex_float *fftbuf	= (complex_float*)fft->GetDataPtr();
+
+			FFT(fftbuf, ArraySize(rsp.rsp.data), false);
+
+			i++;
+
+			break;
+		};
+
+		case 6:
+
+			sp = AllocRsp30();
+
+			if (sp.Valid())
+			{
+				Rsp30 &rsp30 = *((Rsp30*)sp->GetDataPtr());
+				Rsp40 &rsp40 = *((Rsp40*)mb->GetDataPtr());
+
+				complex_float *fftbuf = (complex_float*)fft->GetDataPtr();
+
+				__packed u16 *dst = rsp30.rsp.data;
+
+				float k = 1.0f / ArraySize(rsp30.rsp.data);
+
+				for(u16 n = 0; n < ArraySize(rsp30.rsp.data); n++)
+				{
+					float re = fftbuf->re * k;
+					float im = fftbuf->im * k;
+
+					i32 t = sqrtf(re*re + im*im); fftbuf++;
+					*(dst++) = LIM(t, 0, 65535);
+				};
+
+				rsp30.rsp.gain  	= rsp40.rsp.gain;		
+				rsp30.rsp.spktrNum 	= ArraySize(rsp30.rsp.data);		
+				rsp30.rsp.freqStep 	= 1;		
+				rsp30.rsp.freqStart	= 1;		
+				rsp30.rsp.maxAmp   	= rsp40.rsp.maxAmp;			
+				rsp30.rsp.pow 		= rsp40.rsp.pow;		
+
+				readyLF.Add(mb);	mb.Free();
+				spectrLF.Add(sp);	sp.Free();
+
+				fft.Free();
 
 				i = 0;
 			};
@@ -326,12 +663,16 @@ static void Update_LF()
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 static Ptr<MB> mb_Update_HF;
+static Ptr<MB> fft_Update_HF;
+static Ptr<MB> sp_Update_HF;
 
 static void Update_HF()
 {
 	static byte i = 0;
 
-	Ptr<MB> &mb = mb_Update_HF;
+	Ptr<MB> &mb		= mb_Update_HF;
+	Ptr<MB> &fft	= fft_Update_HF;
+	Ptr<MB> &sp		= sp_Update_HF;
 
 	switch (i)
 	{
@@ -339,7 +680,7 @@ static void Update_HF()
 
 			if (cmdStartHF)
 			{
-				mb = AllocHFB();
+				mb = AllocRsp40();
 
 				if (mb.Valid())
 				{
@@ -401,14 +742,42 @@ static void Update_HF()
 					*(dst++) = ReverseWord(src[0])-32768;src++; //((ReverseWord(src[0])+ReverseWord(src[1]))/2)-32768; src += 2;
 				};
 
-				readyHF.Add(mb);
+				rsp.rsp.gain	= gainDataBuf&15;
+				rsp.rsp.sl		= ArraySize(rsp.rsp.data);
+				rsp.rsp.st		= 500;
+				rsp.rsp.maxAmp	= 1;
+				rsp.rsp.pow		= 2;
 
-				mb.Free();
+				i++;
+			};
+
+			break;
+
+		case 2:
+
+			sp = AllocRsp30();
+
+			if (sp.Valid())
+			{
+				Rsp30 &rsp30 = *((Rsp30*)sp->GetDataPtr());
+				Rsp40 &rsp40 = *((Rsp40*)mb->GetDataPtr());
+
+				rsp30.rsp.gain  	= rsp40.rsp.gain;		
+				rsp30.rsp.spktrNum 	= 16;//ArraySize(rsp40.rsp.data);		
+				rsp30.rsp.freqStep 	= 1;		
+				rsp30.rsp.freqStart	= 1;		
+				rsp30.rsp.maxAmp   	= rsp40.rsp.maxAmp;			
+				rsp30.rsp.pow 		= rsp40.rsp.pow;		
+
+				readyHF.Add(mb);	mb.Free();
+				spectrHF.Add(sp);	sp.Free();
 
 				i = 0;
 			};
 
+
 			break;
+
 	};
 }
 
@@ -487,6 +856,11 @@ static void UpdateADC()
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+static Task  taskUpdateADC(	UpdateADC,	US2CTM(1000)	);
+static Task  taskUpdateLF(	Update_LF,	US2CTM(10)		);
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 static void Init_ADC()
 {
 #ifdef CPU_SAME53
@@ -533,10 +907,15 @@ static void Init_ADC()
 	temp_k3 = VCL-VCH;
 	temp_k4 = VPL-VPH;
 
+	globalTaskList.Add(&taskUpdateADC);
+	globalTaskList.Add(&taskUpdateLF);
+
 #endif
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static Task  taskUpdateHF(	Update_HF,	US2CTM(10)		);
 
 static void Init_ADCHF()
 {
@@ -596,11 +975,18 @@ static void Init_ADCHF()
 
 	adcspi->STATUS = ~0;
 
-
 #endif
+
+	globalTaskList.Add(&taskUpdateHF);
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+static void Init_ADG739()
+{
+	spimux.Connect(MUX_BAUDRATE);
+}
+
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 void InitHardware()
@@ -643,32 +1029,33 @@ void InitHardware()
 	Init_ADC();
 	Init_ADCHF();
 
+	Init_ADG739();
+
+	Init_FFT();
+
 	WDT_Init();
 
 	HW::PIOA->BCLR(13);
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-void UpdateHardware()
-{
-	static byte i = 0;
-
-	//	static Deb db(false, 20);
-
-#define CALL(p) case (__LINE__-S): p; break;
-
-	enum C { S = (__LINE__+3) };
-	switch(i++)
-	{
-		CALL( I2C_Update();		);
-		CALL( UpdateADC();		);
-		CALL( Update_LF();		);
-		CALL( Update_HF();		);
-	};
-
-	i = (i > (__LINE__-S-3)) ? 0 : i;
-}
+//void UpdateHardware()
+//{
+//	static byte i = 0;
+//
+//#define CALL(p) case (__LINE__-S): p; break;
+//
+//	enum C { S = (__LINE__+3) };
+//	switch(i++)
+//	{
+//		CALL( I2C_Update();		);
+//		CALL( UpdateADC();		);
+//		CALL( Update_LF();		);
+//		CALL( Update_HF();		);
+//	};
+//
+//	i = (i > (__LINE__-S-3)) ? 0 : i;
+//}
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
