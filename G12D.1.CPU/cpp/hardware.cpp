@@ -261,6 +261,8 @@ static i32 temp_k2 = 0;
 static i16 temp_k3 = 0;
 static i16 temp_k4 = 0; 
 
+static i32 maxAmpHF = 0;
+
 static byte gainDataBuf		= 0;
 static byte mainGain		= 0;	// (0 - автоподстройка, 1..16)	
 static byte autoGain		= 0;
@@ -521,6 +523,7 @@ static void Update_LF()
 				for(u16 n = 0; n < ArraySize(rsp.rsp.data); n++)
 				{
 					i32 t = p[0]; t -= 32768; *(p++) = t;
+					//i32 t = (n&2) ? 32767 : -32767; *(p++) = t;
 
 					fftbuf[n].re = t;
 					fftbuf[n].im = 0;
@@ -532,11 +535,15 @@ static void Update_LF()
 					sum += t;
 				};
 
-				rsp.rsp.gain	= gainDataBuf&15;
+				rsp.rsp.gain	= autoGain;
 				rsp.rsp.sl		= ArraySize(rsp.rsp.data);
 				rsp.rsp.st		= 10000;
 				rsp.rsp.maxAmp	= max;
 				rsp.rsp.pow		= sum / rsp.rsp.sl;
+
+				if (maxAmpHF > max) max = maxAmpHF;
+
+				maxAmpHF = 0;
 
 				if (mainGain == 0) // 0 - автоподстройка
 				{
@@ -630,6 +637,8 @@ static void Update_LF()
 
 				__packed u16 *dst = rsp30.rsp.data;
 
+				fftbuf->re *= 0.5f; fftbuf->im *= 0.5f;
+
 				float k = 1.0f / ArraySize(rsp30.rsp.data);
 
 				for(u16 n = 0; n < ArraySize(rsp30.rsp.data); n++)
@@ -643,8 +652,8 @@ static void Update_LF()
 
 				rsp30.rsp.gain  	= rsp40.rsp.gain;		
 				rsp30.rsp.spktrNum 	= ArraySize(rsp30.rsp.data);		
-				rsp30.rsp.freqStep 	= 1;		
-				rsp30.rsp.freqStart	= 1;		
+				rsp30.rsp.freqStep 	= 2.44140625;		
+				rsp30.rsp.freqStart	= 0;		
 				rsp30.rsp.maxAmp   	= rsp40.rsp.maxAmp;			
 				rsp30.rsp.pow 		= rsp40.rsp.pow;		
 
@@ -732,28 +741,70 @@ static void Update_HF()
 				hfDMA2.Disable();
 				hfDMAR.Disable();
 
-				Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
-
-				__packed u16 *src = rsp.rsp.data;
-				__packed u16 *dst = rsp.rsp.data;
-
-				for(u16 n = 0; n < 4096; n++)
-				{
-					*(dst++) = ReverseWord(src[0])-32768;src++; //((ReverseWord(src[0])+ReverseWord(src[1]))/2)-32768; src += 2;
-				};
-
-				rsp.rsp.gain	= gainDataBuf&15;
-				rsp.rsp.sl		= ArraySize(rsp.rsp.data);
-				rsp.rsp.st		= 500;
-				rsp.rsp.maxAmp	= 1;
-				rsp.rsp.pow		= 2;
-
 				i++;
 			};
 
 			break;
 
 		case 2:
+
+			fft = AllocFFT();
+
+			if (fft.Valid())
+			{
+				Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
+
+				complex_float *fftbuf = (complex_float*)fft->GetDataPtr();
+
+				__packed u16 *src = rsp.rsp.data;
+				__packed u16 *dst = rsp.rsp.data;
+
+				src[0] = src[1];
+
+				i32 max = 0;
+				u32 sum = 0;
+
+				for(u16 n = 0; n < ArraySize(rsp.rsp.data); n++)
+				{
+					i32 t = ReverseWord(*(src++)); t -= 32768; *(dst++) = t;
+					//i32 t = (n&2) ? 32767 : -32767; *(p++) = t;
+
+					fftbuf[n].re = t;
+					fftbuf[n].im = 0;
+
+					if (t < 0) t = -t;
+
+					if (t > max) max = t;
+
+					sum += t;
+				};
+
+				maxAmpHF = max;
+
+				rsp.rsp.gain	= autoGain;
+				rsp.rsp.sl		= ArraySize(rsp.rsp.data);
+				rsp.rsp.st		= 500;
+				rsp.rsp.maxAmp	= max;
+				rsp.rsp.pow		= sum / rsp.rsp.sl;
+
+				i++;
+			};
+
+			break;
+
+		case 3:
+		{
+			Rsp40 &rsp				= *((Rsp40*)mb->GetDataPtr());
+			complex_float *fftbuf	= (complex_float*)fft->GetDataPtr();
+
+			FFT(fftbuf, ArraySize(rsp.rsp.data), false);
+
+			i++;
+
+			break;
+		};
+
+		case 4:
 
 			sp = AllocRsp30();
 
@@ -762,19 +813,37 @@ static void Update_HF()
 				Rsp30 &rsp30 = *((Rsp30*)sp->GetDataPtr());
 				Rsp40 &rsp40 = *((Rsp40*)mb->GetDataPtr());
 
+				complex_float *fftbuf = (complex_float*)fft->GetDataPtr();
+
+				__packed u16 *dst = rsp30.rsp.data;
+
+				fftbuf->re *= 0.5f; fftbuf->im *= 0.5f;
+
+				float k = 1.0f / ArraySize(rsp30.rsp.data);
+
+				for(u16 n = 0; n < ArraySize(rsp30.rsp.data); n++)
+				{
+					float re = fftbuf->re * k;
+					float im = fftbuf->im * k;
+
+					i32 t = sqrtf(re*re + im*im); fftbuf++;
+					*(dst++) = LIM(t, 0, 65535);
+				};
+
 				rsp30.rsp.gain  	= rsp40.rsp.gain;		
-				rsp30.rsp.spktrNum 	= 16;//ArraySize(rsp40.rsp.data);		
-				rsp30.rsp.freqStep 	= 1;		
-				rsp30.rsp.freqStart	= 1;		
+				rsp30.rsp.spktrNum 	= ArraySize(rsp30.rsp.data);		
+				rsp30.rsp.freqStep 	= 48.828125;		
+				rsp30.rsp.freqStart	= 0;		
 				rsp30.rsp.maxAmp   	= rsp40.rsp.maxAmp;			
 				rsp30.rsp.pow 		= rsp40.rsp.pow;		
 
 				readyHF.Add(mb);	mb.Free();
 				spectrHF.Add(sp);	sp.Free();
 
+				fft.Free();
+
 				i = 0;
 			};
-
 
 			break;
 
