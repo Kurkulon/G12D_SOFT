@@ -37,14 +37,16 @@ __packed struct MainVars // NonVolatileVars
 	u32 timeStamp;
 
 	u16 numDevice;
-	u16 genFreq;				//	Частота генератора(Гц), 
-	u16 winCount;				//	Количество временных окон(шт), 
-	u16 winTime;				//	Длительность временного окна(мкс),
-	u16 bLevel;					//	Уровень дискриминации МЗ(у.е), 
-	u16 mLevel;					//	Уровень дискриминации БЗ(у.е),
-	u16 disableFireNoVibration;	//	Отключение регистрации на стоянке(0 - нет, 1 - да)
-	u16 levelNoVibration;		// Уровень вибрации режима отключения регистрации на стойнке(у.е)(ushort)
+	u16 gain;			//	ШС усиление (0 - автоподстройка, 1..16)				
+	u16 lfSampleLen;	//	НЧ длина оцифровки (ushort)
+	u16 lfSampleTime;	//	НЧ шаг оцифровки (ushort)
+	u16 hfSampleLen;	//	ВЧ длина оцифровки (ushort)
+	u16 hfSampleTime;	//	ВЧ шаг оцифровки (ushort)
+	u16 lfSpectrLen;	//	ШС НЧ количество окон спектра
+	u16 hfSpectrLen;	//	ШС ВЧ количество окон спектра
+	u16 manAdr;			//	Адрес прибора (основной 0x0600 /дубликат 0x0700)
 };
+
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -67,7 +69,7 @@ static u16 manTrmDtaa[4096];
 static u16 manTrmBaud = 0;
 //static u16 tlsTrmBaud = 0;
 
-static const u16 manReqWord = 0x0600;
+static u16 manReqWord = 0x0600;
 static const u16 manReqMask = 0xFF00;
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -133,13 +135,13 @@ static u16 RequestMan_10(u16 *data, u16 len, ManMsg **msg)
 	__packed u16 *start = out;
 
 	*(out++)	= (manReqWord & manReqMask) | 0x10;		//	1. ответное слово
-	*(out++)	= 0;									//	2. ШС усиление (0 - автоподстройка, 1..16)
-	*(out++)	= 0;									//	3. НЧ длина оцифровки (ushort)
-	*(out++)	= 0;									//	4. НЧ шаг оцифровки (ushort)
-	*(out++)	= 0;									//	5. ВЧ длина оцифровки (ushort)
-	*(out++)	= 0;									//	6. ВЧ шаг оцифровки (ushort)
-	*(out++)	= 0;									//	7. ШС НЧ количество окон спектра
-	*(out++)	= 0;									//	8. ШС ВЧ количество окон спектра
+	*(out++)	= mv.gain;								//	2. ШС усиление (0 - автоподстройка, 1..16)
+	*(out++)	= mv.lfSampleLen;						//	3. НЧ длина оцифровки (ushort)
+	*(out++)	= mv.lfSampleTime;						//	4. НЧ шаг оцифровки (ushort)
+	*(out++)	= mv.hfSampleLen;						//	5. ВЧ длина оцифровки (ushort)
+	*(out++)	= mv.hfSampleTime;						//	6. ВЧ шаг оцифровки (ushort)
+	*(out++)	= mv.lfSpectrLen;						//	7. ШС НЧ количество окон спектра
+	*(out++)	= mv.hfSpectrLen;						//	8. ШС ВЧ количество окон спектра
 
 	return out - start;
 }
@@ -245,6 +247,12 @@ static u16 RequestMan_80(u16 *data, u16 len, ManMsg **msg)
 
 		case 3:		// 0x3 - Изменить адрес прибора (основной 0x06 /дубликат 0x07)
 
+			mv.manAdr = (data[2]&0xFF) << 8;
+			
+			manReqWord = mv.manAdr;
+
+			SaveMainParams();
+
 			break;
 	};
 
@@ -261,13 +269,13 @@ static u16 RequestMan_90(u16 *data, u16 len, ManMsg **msg)
 
 	switch(data[1])
 	{
-		case 0x01:	SetGain(data[2]);	break;	//0x1. ШС КУ(0 - автоподстройка, 1..16), 
-		case 0x02:						break;	//0x2. НЧ длина оцифровки (ushort) 
-		case 0x03:						break;	//0x3. НЧ шаг оцифровки (ushort) (0.01 мкс)
-		case 0x04:						break;	//0x4. ВЧ длина оцифровки (ushort)
-		case 0x05:						break;	//0x5. ВЧ шаг оцифровки (ushort) (0.01 мкс)
-		case 0x06:						break;	//0x6. ШС количество окон спектра НЧ (4..2048)
-		case 0x07:						break;	//0x7. ШС количество окон спектра ВЧ (4..2048)
+		case 0x01:	mv.gain = MIN(data[2], 16);	SetGain(mv.gain);	break;	//0x1. ШС КУ(0 - автоподстройка, 1..16), 
+		case 0x02:													break;	//0x2. НЧ длина оцифровки (ushort) 
+		case 0x03:													break;	//0x3. НЧ шаг оцифровки (ushort) (0.01 мкс)
+		case 0x04:													break;	//0x4. ВЧ длина оцифровки (ushort)
+		case 0x05:													break;	//0x5. ВЧ шаг оцифровки (ushort) (0.01 мкс)
+		case 0x06:													break;	//0x6. ШС количество окон спектра НЧ (4..2048)
+		case 0x07:													break;	//0x7. ШС количество окон спектра ВЧ (4..2048)
 
 		default:
 
@@ -337,6 +345,8 @@ static void UpdateMan()
 	switch(i)
 	{
 		case 0:
+
+			manReqWord = mv.manAdr;
 
 			rb.data = &manRcvData;
 			rb.maxLen = sizeof(manRcvData);
@@ -740,14 +750,15 @@ static void UpdateHV()
 
 static void InitMainVars()
 {
-	mv.numDevice				= 11111;
-	mv.genFreq					= 10;	
-	mv.winCount					= 128;	
-	mv.winTime					= 32;	
-	mv.bLevel					= 570;		
-	mv.mLevel					= 580;		
-	mv.disableFireNoVibration	= 0;		
-	mv.levelNoVibration			= 100;		
+	mv.numDevice	= 11111;
+	mv.gain			= 0;	
+	mv.lfSampleLen	= 4096;	
+	mv.lfSampleTime	= 10000;	
+	mv.hfSampleLen	= 4096;		
+	mv.hfSampleTime	= 500;		
+	mv.lfSpectrLen	= 2048;		
+	mv.hfSpectrLen	= 2048;	
+	mv.manAdr		= 0x0600;
 }
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -891,150 +902,6 @@ static void SaveVars()
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-static void TestFRAM()
-{
-	static DSCI2C dscfram;
-	static u16 romAdr = 0;
-
-	static byte state = 0;
-	static TM32 tm;
-
-	static MainVars vv;
-
-	static byte buf[sizeof(vv)*2+16];
-
-	//static byte count = 0;
-
-	static u32 timeStamp = 0;
-
-	//bool loadVarsOk = false;
-
-	switch(state)
-	{
-		case 0:
-
-			if (tm.Check(100))
-			{
-				memset(buf, 0, sizeof(buf));
-
-				u32 tt = timeStamp = GetMilliseconds();
-
-				vv.timeStamp = tt;
-
-				vv.numDevice	= tt += 101;
-				vv.genFreq		= tt += 101;	
-				vv.winCount		= tt += 101;	
-				vv.winTime		= tt += 101;	
-				vv.bLevel		= tt += 101;		
-				vv.mLevel		= tt += 101;		
-
-				PointerCRC p(buf);
-
-				for (byte j = 0; j < 2; j++)
-				{
-					byte* start = p.b;
-					p.CRC.w = 0xFFFF;
-					p.WriteArrayB(&vv, sizeof(vv));
-					p.WriteW(p.CRC.w);
-
-					Nand_ECC_Calc(start, p.b-start, 256, p.b); p.b += 3; 
-				};
-
-				romAdr = ReverseWord(0x1000);
-
-				dscfram.wdata = &romAdr;
-				dscfram.wlen = sizeof(romAdr);
-				dscfram.wdata2 = buf;
-				dscfram.wlen2 = p.b-buf;
-				dscfram.rdata = 0;
-				dscfram.rlen = 0;
-				dscfram.adr = 0x50;
-
-				tm.Reset();
-
-				I2C_AddRequest(&dscfram);
-
-				state++;
-			};
-
-			break;
-
-		case 1:
-
-			if (dscfram.ready)
-			{
-				if (!dscfram.ack) framErrorMask |= 1<<FRAM_NOACKW;
-
-				tm.Reset();
-
-				state++;
-			};
-
-			break;
-
-		case 2:
-
-			if (tm.Check(10))
-			{
-				romAdr = ReverseWord(0x1000);
-
-				dscfram.wdata = &romAdr;
-				dscfram.wlen = sizeof(romAdr);
-				dscfram.wdata2 = 0;
-				dscfram.wlen2 = 0;
-				dscfram.rdata = buf;
-				dscfram.rlen = sizeof(buf);
-				dscfram.adr = 0x50;
-
-				memset(buf, 0, sizeof(buf));
-				memset(&vv, 0, sizeof(vv));
-
-				if (I2C_AddRequest(&dscfram))
-				{
-					state++;
-				};
-			};
-
-			break;
-
-		case 3:
-
-			if (dscfram.ready)
-			{
-				if (!dscfram.ack || dscfram.readedLen != dscfram.rlen) framErrorMask |= (1<<FRAM_NOACKR);
-
-				PointerCRC p(buf);
-
-				u32 err = 0, corrErr = 0, parErr = 0;
-
-				bool c2 = false;
-
-				for (byte i = 0; i < 2; i++)
-				{
-					Nand_ECC_Corr(p.b, sizeof(vv)+2, 256, p.b+sizeof(vv)+2, &err, &corrErr, &parErr);
-
-					p.CRC.w = 0xFFFF;
-					p.ReadArrayB(&vv, sizeof(vv));
-					p.ReadW();
-					p.b += 3;
-
-					if (p.CRC.w == 0) { c2 = true; break; };
-				};
-
-				if (vv.timeStamp != timeStamp) c2 = false;
-
-				if (c2)			framErrorMask |= 1<<FRAM_LOAD_OK;//, count += 1, framErrorMask = (framErrorMask & 0xFF)|(count<<8);
-				if (!c2)		framErrorMask |= 1<<FRAM_ERROR_LOADVARS;
-				if (err)		framErrorMask |= 1<<FRAM_ERROR_ECC;
-				if (corrErr)	framErrorMask |= 1<<FRAM_CORR_ECC;
-				if (parErr)		framErrorMask |= 1<<FRAM_ERROR_PARECC;
-
-				state = 0;
-			};
-	};
-}
-
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 

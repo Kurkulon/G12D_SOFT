@@ -360,7 +360,7 @@ MB* AllocFFT()
 
 complex_float _coef[16];
 
-bool FFT(complex_float *data, u32 size, bool inverse)
+static bool FFT(complex_float *data, u32 size, bool inverse)
 {
 	if ((size > (1u << 13)) || (size < (1u << 1))) return false;
 
@@ -461,6 +461,29 @@ void Init_FFT()
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+static void CalcSpectr(complex_float *fftbuf, u32 size, __packed u16 *dst)
+{
+	FFT(fftbuf, size, false);
+
+	size /= 2;
+
+	//fftbuf->re *= 0.5f; fftbuf->im *= 0.5f;
+	fftbuf->re = 0; fftbuf->im = 0;
+
+	float k = 1.0f / size;
+
+	for(u16 n = 0; n < size; n++)
+	{
+		float re = fftbuf->re * k;
+		float im = fftbuf->im * k;
+
+		i32 t = sqrtf(re*re + im*im); fftbuf++;
+		*(dst++) = LIM(t, 0, 65535);
+	};
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 static Ptr<MB> mb_Update_LF;
 static Ptr<MB> fft_Update_LF;
 static Ptr<MB> sp_Update_LF;
@@ -537,7 +560,7 @@ static void Update_LF()
 
 				rsp.rsp.gain	= autoGain;
 				rsp.rsp.sl		= ArraySize(rsp.rsp.data);
-				rsp.rsp.st		= 10000;
+				rsp.rsp.st		= 9728;
 				rsp.rsp.maxAmp	= max;
 				rsp.rsp.pow		= sum / rsp.rsp.sl;
 
@@ -553,21 +576,23 @@ static void Update_LF()
 					}
 					else
 					{
-						i32 amp = max/gainValue[autoGain];
+						if (max < 10000 && autoGain < (ArraySize(gainValue)-1)) autoGain += 1;
 
-						for (byte n = autoGain; n < ArraySize(gainValue); n++)
-						{
-							autoGain = n;
+						//i32 amp = max/gainValue[autoGain];
 
-							max = amp*gainValue[n];
+						//for (byte n = autoGain; n < ArraySize(gainValue); n++)
+						//{
+						//	autoGain = n;
 
-							if (max > 24000) break;
-						};
+						//	max = amp*gainValue[n];
 
-						if (max > 30000)
-						{
-							if (autoGain > 0) autoGain -= 1;
-						};
+						//	if (max > 24000) break;
+						//};
+
+						//if (max > 30000)
+						//{
+						//	if (autoGain > 0) autoGain -= 1;
+						//};
 					};
 				}
 				else
@@ -613,18 +638,6 @@ static void Update_LF()
 			break;
 
 		case 5:
-		{
-			Rsp40 &rsp				= *((Rsp40*)mb->GetDataPtr());
-			complex_float *fftbuf	= (complex_float*)fft->GetDataPtr();
-
-			FFT(fftbuf, ArraySize(rsp.rsp.data), false);
-
-			i++;
-
-			break;
-		};
-
-		case 6:
 
 			sp = AllocRsp30();
 
@@ -635,24 +648,11 @@ static void Update_LF()
 
 				complex_float *fftbuf = (complex_float*)fft->GetDataPtr();
 
-				__packed u16 *dst = rsp30.rsp.data;
-
-				fftbuf->re *= 0.5f; fftbuf->im *= 0.5f;
-
-				float k = 1.0f / ArraySize(rsp30.rsp.data);
-
-				for(u16 n = 0; n < ArraySize(rsp30.rsp.data); n++)
-				{
-					float re = fftbuf->re * k;
-					float im = fftbuf->im * k;
-
-					i32 t = sqrtf(re*re + im*im); fftbuf++;
-					*(dst++) = LIM(t, 0, 65535);
-				};
+				CalcSpectr(fftbuf, ArraySize(rsp40.rsp.data), rsp30.rsp.data); 
 
 				rsp30.rsp.gain  	= rsp40.rsp.gain;		
 				rsp30.rsp.spktrNum 	= ArraySize(rsp30.rsp.data);		
-				rsp30.rsp.freqStep 	= 2.44140625;		
+				rsp30.rsp.freqStep 	= 100000000.0f/(rsp40.rsp.st*rsp40.rsp.sl);//2.44140625;		
 				rsp30.rsp.freqStart	= 0;		
 				rsp30.rsp.maxAmp   	= rsp40.rsp.maxAmp;			
 				rsp30.rsp.pow 		= rsp40.rsp.pow;		
@@ -697,11 +697,16 @@ static void Update_HF()
 
 					cmdStartHF = false;
 
+					adcTCC->CTRLA = 0; 
+					adcTCC->CTRLA = TCC_SWRST; 
+
 					Rsp40 &rsp = *((Rsp40*)mb->GetDataPtr());
 
 					while(adcspi->SYNCBUSY);
 
 					do t = adcspi->DATA; while(adcspi->INTFLAG & SPI_RXC); 
+
+					while(adcTCC->SYNCBUSY);
 
 					hfDMA1.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, 4096, DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC1, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
 					hfDMA2.WritePeripheral((void*)(rsp.rsp.data), &adcspi->DATA, 4096, DMCH_TRIGACT_BURST|ADCTCC_DMCH_TRIGSRC2, DMDSC_BEATSIZE_BYTE|DMDSC_BLOCKACT_NOACT); 
@@ -734,8 +739,8 @@ static void Update_HF()
 
 			if (hfDMA1.CheckComplete() && hfDMA2.CheckComplete() && hfDMAR.CheckComplete())
 			{
-				adcTCC->CTRLA = 0; 
-				adcTCC->CTRLA = TCC_SWRST; 
+				//adcTCC->CTRLA = 0; 
+				//adcTCC->CTRLA = TCC_SWRST; 
 
 				hfDMA1.Disable();
 				hfDMA2.Disable();
@@ -793,18 +798,6 @@ static void Update_HF()
 			break;
 
 		case 3:
-		{
-			Rsp40 &rsp				= *((Rsp40*)mb->GetDataPtr());
-			complex_float *fftbuf	= (complex_float*)fft->GetDataPtr();
-
-			FFT(fftbuf, ArraySize(rsp.rsp.data), false);
-
-			i++;
-
-			break;
-		};
-
-		case 4:
 
 			sp = AllocRsp30();
 
@@ -815,24 +808,11 @@ static void Update_HF()
 
 				complex_float *fftbuf = (complex_float*)fft->GetDataPtr();
 
-				__packed u16 *dst = rsp30.rsp.data;
-
-				fftbuf->re *= 0.5f; fftbuf->im *= 0.5f;
-
-				float k = 1.0f / ArraySize(rsp30.rsp.data);
-
-				for(u16 n = 0; n < ArraySize(rsp30.rsp.data); n++)
-				{
-					float re = fftbuf->re * k;
-					float im = fftbuf->im * k;
-
-					i32 t = sqrtf(re*re + im*im); fftbuf++;
-					*(dst++) = LIM(t, 0, 65535);
-				};
+				CalcSpectr(fftbuf, ArraySize(rsp40.rsp.data), rsp30.rsp.data); 
 
 				rsp30.rsp.gain  	= rsp40.rsp.gain;		
 				rsp30.rsp.spktrNum 	= ArraySize(rsp30.rsp.data);		
-				rsp30.rsp.freqStep 	= 48.828125;		
+				rsp30.rsp.freqStep 	= 100000000.0f/(rsp40.rsp.st*rsp40.rsp.sl);//48.828125;		
 				rsp30.rsp.freqStart	= 0;		
 				rsp30.rsp.maxAmp   	= rsp40.rsp.maxAmp;			
 				rsp30.rsp.pow 		= rsp40.rsp.pow;		
@@ -934,7 +914,7 @@ static void Init_ADC()
 {
 #ifdef CPU_SAME53
 
-	HW::GCLK->PCHCTRL[GCLK_ADC0] = GEN_16M|GCLK_CHEN; 
+	HW::GCLK->PCHCTRL[GCLK_ADC0] = GEN_MCK|GCLK_CHEN; 
 	HW::GCLK->PCHCTRL[GCLK_ADC1] = GEN_16M|GCLK_CHEN; 
 	HW::MCLK->ClockEnable(PID_ADC0); 
 	HW::MCLK->ClockEnable(PID_ADC1); 
@@ -946,9 +926,9 @@ static void Init_ADC()
 	HW::ADC0->CTRLB		= ADC_RESSEL_16BIT|ADC_FREERUN;
 	HW::ADC0->REFCTRL	= ADC_REFSEL_VDDANA|ADC_REFCOMP;
 	HW::ADC0->INPUTCTRL	= ADC_MUXPOS_AIN9;
-	HW::ADC0->AVGCTRL	= ADC_SAMPLENUM_16;
-	HW::ADC0->SAMPCTRL	= ADC_SAMPLEN(12);
-	HW::ADC0->CTRLA		= ADC_PRESCALER_DIV4|ADC_ENABLE; 
+	HW::ADC0->AVGCTRL	= ADC_SAMPLENUM_64;
+	HW::ADC0->SAMPCTRL	= ADC_SAMPLEN(6);
+	HW::ADC0->CTRLA		= ADC_PRESCALER_DIV16|ADC_ENABLE; 
 	HW::ADC0->SWTRIG	= ADC_START;
 
 	HW::ADC1->CTRLB		= ADC_RESSEL_16BIT;//|ADC_FREERUN;
